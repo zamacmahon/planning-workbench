@@ -206,6 +206,7 @@ function deriveRows(items, stoppages, expanded, orders) {
         assetItems
           .filter(
             (item) =>
+              item.isStoppageReason &&
               item.forecastMs != null &&
               item.forecastMs >= START &&
               item.forecastMs <= END
@@ -745,18 +746,43 @@ function BarAnnotation({ row, durationMs, overlays }) {
   );
 }
 
-function GanttRow({ row, overlays, startDrag, moveToForecast }) {
-  const height = row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
+function GanttRow({
+  row,
+  overlays,
+  startDrag,
+  moveToForecast,
+}) {
+  const height =
+    row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
 
   const durationMs =
-    row.durationMinutes == null ? null : row.durationMinutes * MINUTE;
+    row.durationMinutes == null
+      ? null
+      : row.durationMinutes * MINUTE;
 
-  const markers =
-    row.type === 'asset' || row.type === 'stoppage'
-      ? row.forecastMarkers ?? []
-      : row.forecastMs == null
-        ? []
-        : [row.forecastMs];
+      const markers =
+      row.type === 'asset'
+        ? (row.forecastMarkers ?? []).map((forecastMs) => ({
+            forecastMs,
+            isStoppageReason: true,
+          }))
+      : row.type === 'stoppage'
+        ? (row.forecastMarkers ?? []).map((marker) => ({
+            forecastMs:
+              typeof marker === 'number'
+                ? marker
+                : marker.forecastMs,
+            isStoppageReason: true,
+          }))
+        : row.forecastMs == null
+          ? []
+          : [
+              {
+                forecastMs: row.forecastMs,
+                isStoppageReason:
+                  row.isStoppageReason,
+              },
+            ];
 
   return (
     <div
@@ -765,35 +791,44 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
     >
       <TimelineGrid />
 
-      {overlays.resources && row.resourceDemand && row.startMs != null && (
-        <div
-          className="absolute top-3 z-20 text-[10px] text-red-700"
-          style={{
-            left: `calc(${leftAt(row.startMs)} - 54px)`,
-          }}
-        >
-          {row.resourceDemand}
-        </div>
-      )}
+      {overlays.resources &&
+        row.resourceDemand &&
+        row.startMs != null && (
+          <div
+            className="absolute top-3 z-20 text-[10px] text-red-700"
+            style={{
+              left: `calc(${leftAt(row.startMs)} - 54px)`,
+            }}
+          >
+            {row.resourceDemand}
+          </div>
+        )}
 
       {row.startMs != null && durationMs != null && (
         <div
-          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''
-            }`}
+          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${
+            row.barClass ?? ''
+          }`}
           style={{
             left: leftAt(row.startMs),
             width: widthFor(durationMs),
             touchAction: 'none',
           }}
-          onPointerDown={(event) => startDrag(event, row)}
+          onPointerDown={(event) =>
+            startDrag(event, row)
+          }
         >
           {formatDuration(row.durationMinutes)}
         </div>
       )}
 
       {overlays.forecasts &&
-        markers.map((forecastMs, index) => {
-          const showVarianceLine = row.type !== 'asset' && row.startMs != null;
+        markers.map((marker, index) => {
+          const forecastMs = marker.forecastMs;
+
+          const showVarianceLine =
+            row.type !== 'asset' &&
+            row.startMs != null;
 
           const lineStart = showVarianceLine
             ? Math.min(row.startMs, forecastMs)
@@ -803,34 +838,52 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
             ? Math.abs(row.startMs - forecastMs)
             : 0;
 
+          const forecastType =
+            marker.isStoppageReason
+              ? 'Stoppage reason forecast'
+              : 'Work forecast';
+
           const tooltip =
             row.type === 'asset'
-              ? `Forecasted ${formatFullDateTime(forecastMs)}`
-              : `Forecasted ${formatFullDateTime(
-                forecastMs
-              )}\nClick to move start date to align to forecast.`;
+              ? `${forecastType}: ${formatFullDateTime(
+                  forecastMs
+                )}`
+              : `${forecastType}: ${formatFullDateTime(
+                  forecastMs
+                )}\nClick to move start date to align to forecast.`;
+
+          const forecastClass =
+            marker.isStoppageReason
+              ? 'border-green-700 bg-green-100'
+              : 'border-slate-500 bg-slate-100';
 
           return (
-            <React.Fragment key={`${forecastMs}-${index}`}>
-              {lineStart != null && lineWidth > 0 && (
-                <div
-                  className="absolute top-5 z-10 border-t border-dotted border-green-700"
-                  style={{
-                    left: leftAt(lineStart),
-                    width: widthFor(lineWidth),
-                  }}
-                />
-              )}
+            <React.Fragment
+              key={`${forecastMs}-${marker.isStoppageReason}-${index}`}
+            >
+              {lineStart != null &&
+                lineWidth > 0 && (
+                  <div
+                    className="absolute top-5 z-10 border-t border-dotted border-green-700"
+                    style={{
+                      left: leftAt(lineStart),
+                      width: widthFor(lineWidth),
+                    }}
+                  />
+                )}
 
               <button
-                className="absolute top-5 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-900 bg-sky-100"
+                className={`absolute top-5 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${forecastClass}`}
                 style={{
                   left: leftAt(forecastMs),
                 }}
                 title={tooltip}
                 onClick={() => {
                   if (row.type !== 'asset') {
-                    moveToForecast(row, forecastMs);
+                    moveToForecast(
+                      row,
+                      forecastMs
+                    );
                   }
                 }}
               >
@@ -840,7 +893,11 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
           );
         })}
 
-      <BarAnnotation row={row} durationMs={durationMs} overlays={overlays} />
+      <BarAnnotation
+        row={row}
+        durationMs={durationMs}
+        overlays={overlays}
+      />
     </div>
   );
 }
