@@ -108,26 +108,11 @@ export interface RawWorkItem {
  */
 export interface WorkItemPlanningState {
   /**
-   * Scheduled start date and time.
-   *
-   * Null means the operation has not been scheduled.
-   */
-  startMs: DateTimeMs | null;
-
-  /**
    * Stoppage to which the operation is allocated.
    *
    * Null means the operation is not allocated.
    */
   allocatedStoppageId: StoppageId | null;
-
-  /**
-   * Stoppage under which the operation appears as candidate work.
-   *
-   * Null means the operation is not associated with an unallocated-work
-   * group.
-   */
-  visibleInUnallocatedFor: StoppageId | null;
 }
 
 /**
@@ -175,8 +160,7 @@ export type PlanningRowType =
   | 'unallocated'
   | 'topReason';
 
-export interface PlanningRow
-  extends Partial<WorkItem> {
+export interface PlanningRow extends Partial<WorkItem> {
   id: string;
   rowKey: string;
   type: PlanningRowType;
@@ -185,6 +169,12 @@ export interface PlanningRow
   description: string;
   asset: string;
   forecastMarkers?: DateTimeMs[];
+  orderKey?: string;
+
+  /**
+   * Parent stoppage for allocated and unallocated rows.
+   */
+  stoppageId?: StoppageId;
 }
 
 export interface OverlayState {
@@ -218,11 +208,15 @@ export type ExpandedState = Record<
   boolean
 >;
 
-export interface SectionOrderState {
-  allocated: string[];
-  unallocated: string[];
-  topLevel: string[];
-}
+/**
+ * Explicit row order keyed by planning section.
+ *
+ * Example keys:
+ * "allocated:stop-123"
+ * "unallocated:stop-123"
+ * "topLevel:TD6310"
+ */
+export type SectionOrderState = Record<string, string[]>;
 
 export type ColumnWidths = [
   number,
@@ -244,3 +238,11 @@ export interface StartUpdate {
   id: string;
   startMs: DateTimeMs;
 }
+
+export interface Stoppage {
+  id: StoppageId;
+  asset: string;
+  description: string;
+}
+
+export type StoppageState = Record<StoppageId, Stoppage>;

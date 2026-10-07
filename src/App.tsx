@@ -2,14 +2,12 @@ import React from 'react';
 
 import { workItems } from './data/workItems';
 import { resourceDefinitions } from './data/resources';
-// STOPPAGE_ID = 'stop-1'
-import { STOPPAGE_ID } from './data/constants';
 import { assets } from './data/assets';
 
 import {
+  sampleStoppages,
   sampleAllocation,
   sampleSchedule,
-  sampleCandidates,
   sampleExpanded,
   sampleExpandedResources,
   sampleOrders,
@@ -93,7 +91,7 @@ function parseResourceDemand(value) {
 function calculateResourceSeries(items) {
   const allocatedTimed = items.filter(
     (item) =>
-      item.allocatedStoppageId === STOPPAGE_ID &&
+      item.allocatedStoppageId != null &&
       item.startMs != null &&
       item.durationMinutes != null
   );
@@ -109,23 +107,45 @@ function calculateResourceSeries(items) {
 
   return resourceDefinitions.map((resource) => ({
     ...resource,
+
     intervals: markers
       .slice(0, -1)
       .map((startMs, index) => {
         const endMs = markers[index + 1];
+
         const contributors = allocatedTimed.flatMap((item) => {
-          const itemEndMs = item.startMs + item.durationMinutes * MINUTE;
-          if (item.startMs >= endMs || itemEndMs <= startMs) return [];
-          const demand = parseResourceDemand(item.resourceDemand).find(
+          const itemEndMs =
+            item.startMs + item.durationMinutes * MINUTE;
+
+          if (
+            item.startMs >= endMs ||
+            itemEndMs <= startMs
+          ) {
+            return [];
+          }
+
+          const demand = parseResourceDemand(
+            item.resourceDemand
+          ).find(
             (entry) => entry.code === resource.code
           );
-          return demand ? [{ id: item.id, count: demand.count }] : [];
+
+          return demand
+            ? [
+              {
+                id: item.id,
+                count: demand.count,
+              },
+            ]
+            : [];
         });
+
         return {
           startMs,
           endMs,
           count: contributors.reduce(
-            (sum, contributor) => sum + contributor.count,
+            (sum, contributor) =>
+              sum + contributor.count,
             0
           ),
           contributors,
@@ -135,7 +155,7 @@ function calculateResourceSeries(items) {
   }));
 }
 
-function applyState(allocation, schedule, candidates) {
+function applyState(allocation, schedule) {
   return workItems.map((source) => {
     const scheduleEntry = schedule[source.id];
 
@@ -143,7 +163,6 @@ function applyState(allocation, schedule, candidates) {
       ...source,
       startMs: scheduleEntry?.startMs ?? source.startMs,
       allocatedStoppageId: allocation[source.id] ?? null,
-      visibleInUnallocatedFor: candidates[source.id] ?? null,
     };
   });
 }
@@ -155,7 +174,7 @@ function ordered(items, order) {
   );
 }
 
-function deriveRows(items, expanded, orders) {
+function deriveRows(items, stoppages, expanded, orders) {
   const rows = [];
 
   for (const assetDefinition of assets) {
@@ -163,6 +182,23 @@ function deriveRows(items, expanded, orders) {
 
     const assetItems = items.filter(
       (item) => item.asset === assetDefinition.id
+    );
+
+    const assetStoppages = Object.values(stoppages).filter(
+      (stoppage) => stoppage.asset === assetDefinition.id
+    );
+
+    const unallocatedAssetItems = assetItems.filter(
+      (item) => item.allocatedStoppageId == null
+    );
+
+    const topLevelOrderKey = `topLevel:${assetDefinition.id}`;
+
+    const topLevelReasons = ordered(
+      unallocatedAssetItems.filter(
+        (item) => item.isStoppageReason
+      ),
+      orders[topLevelOrderKey] ?? []
     );
 
     const assetForecastMarkers = [
@@ -178,42 +214,14 @@ function deriveRows(items, expanded, orders) {
       ),
     ].sort((a, b) => a - b);
 
-    const allocated = ordered(
-      assetItems.filter(
-        (item) => item.allocatedStoppageId === STOPPAGE_ID
-      ),
-      orders.allocated
-    );
-
-    const unallocated = ordered(
-      assetItems.filter(
-        (item) =>
-          item.visibleInUnallocatedFor === STOPPAGE_ID &&
-          item.allocatedStoppageId == null
-      ),
-      orders.unallocated
-    );
-
-    const topLevelReasons = ordered(
-      assetItems.filter(
-        (item) =>
-          item.isStoppageReason &&
-          item.allocatedStoppageId == null
-      ),
-      orders.topLevel
-    );
-
-    const hasStoppage = allocated.length > 0;
-
-    const hasChildren =
-      hasStoppage || topLevelReasons.length > 0;
-
     rows.push({
       id: assetRowId,
       rowKey: assetRowId,
       type: 'asset',
       level: 0,
-      hasChildren,
+      hasChildren:
+        assetStoppages.length > 0 ||
+        topLevelReasons.length > 0,
       description: assetDefinition.description,
       asset: assetDefinition.id,
       priority: null,
@@ -224,7 +232,23 @@ function deriveRows(items, expanded, orders) {
       continue;
     }
 
-    if (hasStoppage) {
+    for (const stoppage of assetStoppages) {
+      const allocatedOrderKey = `allocated:${stoppage.id}`;
+      const unallocatedOrderKey = `unallocated:${stoppage.id}`;
+
+      const allocated = ordered(
+        assetItems.filter(
+          (item) =>
+            item.allocatedStoppageId === stoppage.id
+        ),
+        orders[allocatedOrderKey] ?? []
+      );
+
+      const unallocated = ordered(
+        unallocatedAssetItems,
+        orders[unallocatedOrderKey] ?? []
+      );
+
       const timed = allocated.filter(
         (item) =>
           item.startMs != null &&
@@ -233,59 +257,68 @@ function deriveRows(items, expanded, orders) {
 
       const startMs = timed.length
         ? Math.min(
-            ...timed.map((item) => item.startMs)
-          )
+          ...timed.map((item) => item.startMs)
+        )
         : null;
 
       const finishMs = timed.length
         ? Math.max(
-            ...timed.map(
-              (item) =>
-                item.startMs +
-                item.durationMinutes * MINUTE
-            )
+          ...timed.map(
+            (item) =>
+              item.startMs +
+              item.durationMinutes * MINUTE
           )
+        )
         : null;
 
-      const peakResourceDemand = calculateResourceSeries(
-        allocated
-      )
-        .map((resource) => ({
-          code: resource.code,
-          peak: Math.max(
-            0,
-            ...resource.intervals.map(
-              (interval) => interval.count
-            )
-          ),
-        }))
-        .filter((resource) => resource.peak > 0)
-        .map(
-          (resource) =>
-            `${resource.peak}x ${resource.code}`
-        )
-        .join(', ');
+      const peakResourceDemand =
+        calculateResourceSeries(allocated)
+          .map((resource) => ({
+            code: resource.code,
+            peak: Math.max(
+              0,
+              ...resource.intervals.map(
+                (interval) => interval.count
+              )
+            ),
+          }))
+          .filter((resource) => resource.peak > 0)
+          .map(
+            (resource) =>
+              `${resource.peak}x ${resource.code}`
+          )
+          .join(', ');
 
       const allocatedPriorities = allocated
         .map((item) => item.priority)
         .filter((priority) => priority != null);
 
-      const stoppageId =
-        `${assetDefinition.id}-${STOPPAGE_ID}`;
+      const stoppageForecastMarkers = [
+        ...new Set(
+          allocated
+            .filter(
+              (item) =>
+                item.isStoppageReason &&
+                item.forecastMs != null &&
+                item.forecastMs >= START &&
+                item.forecastMs <= END
+            )
+            .map((item) => item.forecastMs)
+        ),
+      ].sort((a, b) => a - b);
 
       const unallocatedId =
-        `${stoppageId}-unallocated`;
+        `${stoppage.id}-unallocated`;
 
       rows.push({
-        id: stoppageId,
-        rowKey: stoppageId,
+        id: stoppage.id,
+        rowKey: stoppage.id,
         type: 'stoppage',
         level: 1,
         hasChildren:
           allocated.length > 0 ||
           unallocated.length > 0,
-        description:
-          `${assetDefinition.id}: PLANNED STOPPAGE`,
+        description: stoppage.description,
         asset: assetDefinition.id,
         priority: allocatedPriorities.length
           ? Math.min(...allocatedPriorities)
@@ -295,59 +328,56 @@ function deriveRows(items, expanded, orders) {
           startMs == null || finishMs == null
             ? null
             : Math.round(
-                (finishMs - startMs) / MINUTE
-              ),
+              (finishMs - startMs) / MINUTE
+            ),
         resourceDemand: peakResourceDemand,
-        forecastMarkers: [
-          ...new Set(
-            allocated
-              .filter(
-                (item) =>
-                  item.isStoppageReason &&
-                  item.forecastMs != null &&
-                  item.forecastMs >= START &&
-                  item.forecastMs <= END
-              )
-              .map((item) => item.forecastMs)
-          ),
-        ].sort((a, b) => a - b),
+        forecastMarkers: stoppageForecastMarkers,
         barClass: 'bg-cyan-800 text-white',
       });
 
-      if (expanded[stoppageId]) {
+      if (!expanded[stoppage.id]) {
+        continue;
+      }
+
+      rows.push(
+        ...allocated.map((item) => ({
+          ...item,
+          rowKey:
+            `${stoppage.id}-allocated-${item.id}`,
+          type: 'allocated',
+          level: 2,
+          stoppageId: stoppage.id,
+          orderKey: allocatedOrderKey,
+        }))
+      );
+
+      rows.push({
+        id: unallocatedId,
+        rowKey: unallocatedId,
+        type: 'unallocatedHeader',
+        level: 2,
+        hasChildren: unallocated.length > 0,
+        description: 'Unallocated Work',
+        asset: assetDefinition.id,
+        priority: null,
+        stoppageId: stoppage.id,
+      });
+
+      if (
+        unallocated.length > 0 &&
+        expanded[unallocatedId]
+      ) {
         rows.push(
-          ...allocated.map((item) => ({
+          ...unallocated.map((item) => ({
             ...item,
-            rowKey: `allocated-${item.id}`,
-            type: 'allocated',
-            level: 2,
+            rowKey:
+              `${stoppage.id}-unallocated-${item.id}`,
+            type: 'unallocated',
+            level: 3,
+            stoppageId: stoppage.id,
+            orderKey: unallocatedOrderKey,
           }))
         );
-
-        rows.push({
-          id: unallocatedId,
-          rowKey: unallocatedId,
-          type: 'unallocatedHeader',
-          level: 2,
-          hasChildren: unallocated.length > 0,
-          description: 'Unallocated Work',
-          asset: assetDefinition.id,
-          priority: null,
-        });
-
-        if (
-          unallocated.length > 0 &&
-          expanded[unallocatedId]
-        ) {
-          rows.push(
-            ...unallocated.map((item) => ({
-              ...item,
-              rowKey: `unallocated-${item.id}`,
-              type: 'unallocated',
-              level: 3,
-            }))
-          );
-        }
       }
     }
 
@@ -357,6 +387,7 @@ function deriveRows(items, expanded, orders) {
         rowKey: `top-${item.id}`,
         type: 'topReason',
         level: 1,
+        orderKey: topLevelOrderKey,
       }))
     );
   }
@@ -616,7 +647,7 @@ function TableRow({
         {row.type === 'allocated' && (
           <button
             className="text-sky-700"
-            onClick={() => remove(row.id)}
+            onClick={() => remove(row)}
           >
             [-] Remove from Stoppage
           </button>
@@ -625,7 +656,7 @@ function TableRow({
         {row.type === 'unallocated' && (
           <button
             className="text-sky-700"
-            onClick={() => allocate(row.id)}
+            onClick={() => allocate(row)}
           >
             [+] Add to Stoppage
           </button>
@@ -634,7 +665,7 @@ function TableRow({
         {row.type === 'topReason' && (
           <button
             className="text-sky-700"
-            onClick={() => allocate(row.id)}
+            onClick={() => allocate(row)}
           >
             [+] Create Stoppage
           </button>
@@ -724,8 +755,8 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
     row.type === 'asset' || row.type === 'stoppage'
       ? row.forecastMarkers ?? []
       : row.forecastMs == null
-      ? []
-      : [row.forecastMs];
+        ? []
+        : [row.forecastMs];
 
   return (
     <div
@@ -747,9 +778,8 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
 
       {row.startMs != null && durationMs != null && (
         <div
-          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${
-            row.barClass ?? ''
-          }`}
+          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''
+            }`}
           style={{
             left: leftAt(row.startMs),
             width: widthFor(durationMs),
@@ -777,8 +807,8 @@ function GanttRow({ row, overlays, startDrag, moveToForecast }) {
             row.type === 'asset'
               ? `Forecasted ${formatFullDateTime(forecastMs)}`
               : `Forecasted ${formatFullDateTime(
-                  forecastMs
-                )}\nClick to move start date to align to forecast.`;
+                forecastMs
+              )}\nClick to move start date to align to forecast.`;
 
           return (
             <React.Fragment key={`${forecastMs}-${index}`}>
@@ -832,7 +862,11 @@ function ItemsPanel({
   setOrders,
 }) {
   const template = widths.map((width) => `${width}px`).join(' ');
-  const contentWidth = widths.reduce((sum, width) => sum + width, 0);
+  const contentWidth = widths.reduce(
+    (sum, width) => sum + width,
+    0
+  );
+
   const [tableScrollLeft, setTableScrollLeft] = React.useState(0);
 
   const headings = [
@@ -856,7 +890,10 @@ function ItemsPanel({
       setWidths((current) =>
         current.map((width, currentIndex) =>
           currentIndex === index
-            ? Math.max(60, originWidth + moveEvent.clientX - originX)
+            ? Math.max(
+              60,
+              originWidth + moveEvent.clientX - originX
+            )
             : width
         )
       );
@@ -873,55 +910,70 @@ function ItemsPanel({
     window.addEventListener('pointercancel', up);
   };
 
-  const sectionKey = (row) => {
-    if (row.type === 'allocated') return 'allocated';
-    if (row.type === 'topReason') return 'topLevel';
-    return 'unallocated';
-  };
+  const idsFor = (row) => {
+    if (!row.orderKey) {
+      return [];
+    }
 
-  const idsFor = (row) =>
-    rows
+    return rows
       .filter(
         (candidate) =>
-          candidate.type === row.type &&
-          sectionKey(candidate) === sectionKey(row)
+          candidate.orderKey === row.orderKey
       )
       .map((candidate) => candidate.id);
+  };
 
   const canMove = (row, direction) => {
     const ids = idsFor(row);
     const index = ids.indexOf(row.id);
+    const targetIndex = index + direction;
 
     return (
       index >= 0 &&
-      index + direction >= 0 &&
-      index + direction < ids.length
+      targetIndex >= 0 &&
+      targetIndex < ids.length
     );
   };
 
   const moveRow = (row, direction) => {
+    if (!row.orderKey) {
+      return;
+    }
+
     setOrders((current) => {
-      const key = sectionKey(row);
       const visibleIds = idsFor(row);
-      const existing = current[key] ?? [];
+      const existing = current[row.orderKey] ?? [];
 
       const ids = [
-        ...existing.filter((id) => visibleIds.includes(id)),
-        ...visibleIds.filter((id) => !existing.includes(id)),
+        ...existing.filter((id) =>
+          visibleIds.includes(id)
+        ),
+        ...visibleIds.filter(
+          (id) => !existing.includes(id)
+        ),
       ];
 
       const from = ids.indexOf(row.id);
       const to = from + direction;
 
-      if (from < 0 || to < 0 || to >= ids.length) {
+      if (
+        from < 0 ||
+        to < 0 ||
+        to >= ids.length
+      ) {
         return current;
       }
 
-      [ids[from], ids[to]] = [ids[to], ids[from]];
+      const nextIds = [...ids];
+
+      [nextIds[from], nextIds[to]] = [
+        nextIds[to],
+        nextIds[from],
+      ];
 
       return {
         ...current,
-        [key]: ids,
+        [row.orderKey]: nextIds,
       };
     });
   };
@@ -947,14 +999,18 @@ function ItemsPanel({
 
                 <div
                   className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
-                  onPointerDown={(event) => resize(event, index)}
+                  onPointerDown={(event) =>
+                    resize(event, index)
+                  }
                 />
               </div>
             ))}
           </div>
         </div>
 
-        <TimelineHeader scrollLeft={timeline.scrollLeft} />
+        <TimelineHeader
+          scrollLeft={timeline.scrollLeft}
+        />
       </div>
 
       <div className="min-h-0 overflow-x-hidden overflow-y-auto">
@@ -962,13 +1018,15 @@ function ItemsPanel({
           <div
             className="overflow-x-auto border-r"
             onScroll={(event) =>
-              setTableScrollLeft(event.currentTarget.scrollLeft)
+              setTableScrollLeft(
+                event.currentTarget.scrollLeft
+              )
             }
           >
             <div style={{ width: contentWidth }}>
               {rows.map((row) => (
                 <TableRow
-          key={`table-${row.rowKey}`}
+                  key={`table-${row.rowKey}`}
                   row={row}
                   template={template}
                   expanded={expanded[row.id]}
@@ -1016,9 +1074,8 @@ function ResourceDescription({ resource, expanded, toggle }) {
 
   return (
     <div
-      className={`${
-        expanded ? 'h-24' : 'h-8'
-      } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
+      className={`${expanded ? 'h-24' : 'h-8'
+        } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
     >
       <button onClick={() => toggle(resource.code)}>
         {expanded ? '▼' : '▶'} {resource.label}
@@ -1039,9 +1096,8 @@ function ResourceGraph({ resource, expanded }) {
 
   return (
     <div
-      className={`relative ${
-        expanded ? 'h-24' : 'h-8'
-      } border-b border-slate-200 bg-white`}
+      className={`relative ${expanded ? 'h-24' : 'h-8'
+        } border-b border-slate-200 bg-white`}
       style={{ width: GANTT_WIDTH }}
     >
       <TimelineGrid />
@@ -1051,11 +1107,10 @@ function ResourceGraph({ resource, expanded }) {
           const overCapacity = interval.count > resource.capacity;
           const tooltip = `${formatFullDateTime(
             interval.startMs
-          )} to ${formatFullDateTime(interval.endMs)}\n${resource.code}: ${
-            interval.count
-          } in use\nOrders: ${interval.contributors
-            .map((item) => item.id)
-            .join(', ')}`;
+          )} to ${formatFullDateTime(interval.endMs)}\n${resource.code}: ${interval.count
+            } in use\nOrders: ${interval.contributors
+              .map((item) => item.id)
+              .join(', ')}`;
 
           return (
             <div
@@ -1153,9 +1208,9 @@ export default function PlanningGridFixedAnnotationsV10() {
     priorities: true,
     descriptions: true,
   });
+  const [stoppages, setStoppages] = React.useState(sampleStoppages);
   const [allocation, setAllocation] = React.useState(sampleAllocation);
   const [schedule, setSchedule] = React.useState(sampleSchedule);
-  const [candidates, setCandidates] = React.useState(sampleCandidates);
   const [expanded, setExpanded] = React.useState(sampleExpanded);
   const [expandedResources, setExpandedResources] = React.useState(
     sampleExpandedResources
@@ -1166,24 +1221,29 @@ export default function PlanningGridFixedAnnotationsV10() {
   const [orders, setOrders] = React.useState(sampleOrders);
 
   const timeline = useTimelineScroll();
-  const items = applyState(allocation, schedule, candidates);
+  const items = applyState(allocation, schedule);
   const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
-  const rows = deriveRows(items, expanded, orders);
+  const rows = deriveRows(
+    items,
+    stoppages,
+    expanded,
+    orders
+  );
   const resourceSeries = calculateResourceSeries(items);
 
   const setManyStarts = (updates) => {
     setSchedule((current) => {
       const next = { ...current };
-  
+
       for (const update of updates) {
         const item = itemById[update.id];
-  
+
         if (!item || item.durationMinutes == null) {
           continue;
         }
-  
+
         const durationMs = item.durationMinutes * MINUTE;
-  
+
         next[update.id] = {
           startMs: clamp(
             snapDateTime(update.startMs),
@@ -1192,14 +1252,14 @@ export default function PlanningGridFixedAnnotationsV10() {
           ),
         };
       }
-  
+
       return next;
     });
   };
 
   const moveToForecast = (row, forecastMs) => {
     const target = snapDateTime(forecastMs);
-  
+
     if (row.type !== 'stoppage') {
       setManyStarts([
         {
@@ -1207,22 +1267,21 @@ export default function PlanningGridFixedAnnotationsV10() {
           startMs: target,
         },
       ]);
-  
+
       return;
     }
-  
+
     if (row.startMs == null) {
       return;
     }
-  
+
     const delta = target - row.startMs;
-  
+
     setManyStarts(
       items
         .filter(
           (item) =>
-            item.asset === row.asset &&
-            item.allocatedStoppageId === STOPPAGE_ID &&
+            item.allocatedStoppageId === row.id &&
             item.startMs != null &&
             item.durationMinutes != null
         )
@@ -1240,35 +1299,34 @@ export default function PlanningGridFixedAnnotationsV10() {
     ) {
       return;
     }
-  
+
     event.preventDefault();
     event.stopPropagation();
-  
+
     const originX = event.clientX;
-  
+
     const members =
       row.type === 'stoppage'
         ? items.filter(
-            (item) =>
-              item.asset === row.asset &&
-              item.allocatedStoppageId === STOPPAGE_ID &&
-              item.startMs != null &&
-              item.durationMinutes != null
-          )
+          (item) =>
+            item.allocatedStoppageId === row.id &&
+            item.startMs != null &&
+            item.durationMinutes != null
+        )
         : [itemById[row.id]].filter(Boolean);
-  
+
     const origins = Object.fromEntries(
       members.map((item) => [
         item.id,
         item.startMs,
       ])
     );
-  
+
     const move = (moveEvent) => {
       const delta = snapDuration(
         ((moveEvent.clientX - originX) / GANTT_WIDTH) * SPAN
       );
-  
+
       setManyStarts(
         members.map((item) => ({
           id: item.id,
@@ -1276,16 +1334,120 @@ export default function PlanningGridFixedAnnotationsV10() {
         }))
       );
     };
-  
+
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
     };
-  
+
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+  };
+
+  const toggleExpanded = (id) => {
+    setExpanded((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  };
+
+  const allocateWork = (row) => {
+    if (row.type === 'topReason') {
+      const stoppageId = `stop-${crypto.randomUUID()}`;
+  
+      setStoppages((current) => ({
+        ...current,
+        [stoppageId]: {
+          id: stoppageId,
+          asset: row.asset,
+          description: `${row.asset}: ${row.description}`,
+        },
+      }));
+  
+      setAllocation((current) => ({
+        ...current,
+        [row.id]: stoppageId,
+      }));
+  
+      setExpanded((current) => ({
+        ...current,
+        [`asset-${row.asset}`]: true,
+        [stoppageId]: true,
+        [`${stoppageId}-unallocated`]: true,
+      }));
+  
+      return;
+    }
+  
+    if (
+      row.type === 'unallocated' &&
+      row.stoppageId
+    ) {
+      setAllocation((current) => ({
+        ...current,
+        [row.id]: row.stoppageId,
+      }));
+    }
+  };
+  
+  const removeWork = (row) => {
+    if (
+      row.type !== 'allocated' ||
+      !row.stoppageId
+    ) {
+      return;
+    }
+  
+    setAllocation((current) => ({
+      ...current,
+      [row.id]: null,
+    }));
+  };
+
+  const deleteStoppage = (row) => {
+    if (row.type !== 'stoppage') {
+      return;
+    }
+  
+    setAllocation((current) => {
+      const next = { ...current };
+  
+      for (const item of items) {
+        if (item.allocatedStoppageId === row.id) {
+          next[item.id] = null;
+        }
+      }
+  
+      return next;
+    });
+  
+    setStoppages((current) => {
+      const next = { ...current };
+  
+      delete next[row.id];
+  
+      return next;
+    });
+  
+    setExpanded((current) => {
+      const next = { ...current };
+  
+      delete next[row.id];
+      delete next[`${row.id}-unallocated`];
+  
+      return next;
+    });
+  
+    setOrders((current) => {
+      const next = { ...current };
+  
+      delete next[`allocated:${row.id}`];
+      delete next[`unallocated:${row.id}`];
+  
+      return next;
+    });
   };
 
   return (
@@ -1302,108 +1464,22 @@ export default function PlanningGridFixedAnnotationsV10() {
         <Config overlays={overlays} setOverlays={setOverlays} />
 
         <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <ItemsPanel
-  rows={rows}
-  overlays={overlays}
-  timeline={timeline}
-  expanded={expanded}
-  toggle={(id) => {
-    setExpanded((current) => ({
-      ...current,
-      [id]: !current[id],
-    }));
-  }}
-  allocate={(id) => {
-    const selectedItem = itemById[id];
-
-    if (!selectedItem) {
-      return;
-    }
-
-    setAllocation((current) => ({
-      ...current,
-      [id]: STOPPAGE_ID,
-    }));
-
-    if (selectedItem.isStoppageReason) {
-      setCandidates((current) => {
-        const next = { ...current };
-
-        for (const item of items) {
-          if (
-            item.asset === selectedItem.asset &&
-            item.id !== selectedItem.id &&
-            item.allocatedStoppageId == null
-          ) {
-            next[item.id] = STOPPAGE_ID;
-          }
-        }
-
-        return next;
-      });
-
-      setExpanded((current) => ({
-        ...current,
-        [`asset-${selectedItem.asset}`]: true,
-        [`${selectedItem.asset}-${STOPPAGE_ID}`]: true,
-        [`${selectedItem.asset}-${STOPPAGE_ID}-unallocated`]: true,
-      }));
-    }
-  }}
-  remove={(id) => {
-    setAllocation((current) => ({
-      ...current,
-      [id]: null,
-    }));
-
-    setCandidates((current) => ({
-      ...current,
-      [id]: STOPPAGE_ID,
-    }));
-  }}
-  deleteStoppage={(row) => {
-    setAllocation((current) => {
-      const next = { ...current };
-
-      for (const item of items) {
-        if (
-          item.asset === row.asset &&
-          item.allocatedStoppageId === STOPPAGE_ID
-        ) {
-          next[item.id] = null;
-        }
-      }
-
-      return next;
-    });
-
-    setCandidates((current) => {
-      const next = { ...current };
-
-      for (const item of items) {
-        if (item.asset === row.asset) {
-          next[item.id] = null;
-        }
-      }
-
-      return next;
-    });
-
-    setExpanded((current) => {
-      const next = { ...current };
-
-      delete next[row.id];
-      delete next[`${row.id}-unallocated`];
-
-      return next;
-    });
-  }}
-  orecast={moveToForecast}
-  widths={widths}
-  setWidths={setWidths}
-  orders={orders}
-  setOrders={setOrders}
-/>
+          <ItemsPanel
+            rows={rows}
+            overlays={overlays}
+            timeline={timeline}
+            expanded={expanded}
+            toggle={toggleExpanded}
+            allocate={allocateWork}
+            remove={removeWork}
+            deleteStoppage={deleteStoppage}
+            startDrag={startDrag}
+            moveToForecast={moveToForecast}
+            widths={widths}
+            setWidths={setWidths}
+            orders={orders}
+            setOrders={setOrders}
+          />
 
           <ResourcesPanel
             resourceSeries={resourceSeries}

@@ -3,7 +3,7 @@ import type {
   DateTimeMs,
   ExpandedState,
   SectionOrderState,
-  StoppageId,
+  StoppageState,
 } from '../types';
 
 export interface ScheduleEntry {
@@ -12,13 +12,11 @@ export interface ScheduleEntry {
 
 export type ScheduleState = Record<string, ScheduleEntry>;
 
-export type CandidateState = Record<string, StoppageId | null>;
+export const sampleStoppages: StoppageState = {};
 
 export const sampleAllocation: AllocationState = {};
 
 export const sampleSchedule: ScheduleState = {};
-
-export const sampleCandidates: CandidateState = {};
 
 export const sampleExpanded: ExpandedState = {};
 
@@ -29,8 +27,4 @@ export const sampleExpandedResources: ExpandedState = {
   TYR: false,
 };
 
-export const sampleOrders: SectionOrderState = {
-  allocated: [],
-  unallocated: [],
-  topLevel: [],
-};
+export const sampleOrders: SectionOrderState = {};
