@@ -8,7 +8,8 @@ import { assets } from './data/assets';
 
 import {
   sampleAllocation,
-  sampleOffsets,
+  sampleSchedule,
+  sampleCandidates,
   sampleExpanded,
   sampleExpandedResources,
   sampleOrders,
@@ -134,26 +135,15 @@ function calculateResourceSeries(items) {
   }));
 }
 
-function applyState(allocation, offsets) {
+function applyState(allocation, schedule, candidates) {
   return workItems.map((source) => {
-    const allocatedStoppageId = Object.prototype.hasOwnProperty.call(
-      allocation,
-      source.id
-    )
-      ? allocation[source.id]
-      : source.allocatedStoppageId;
+    const scheduleEntry = schedule[source.id];
 
-    if (source.startMs == null) return { ...source, allocatedStoppageId };
-
-    const durationMs = (source.durationMinutes ?? 0) * MINUTE;
     return {
       ...source,
-      allocatedStoppageId,
-      startMs: clamp(
-        snapDateTime(source.startMs + (offsets[source.id] ?? 0)),
-        START,
-        END - durationMs
-      ),
+      startMs: scheduleEntry?.startMs ?? source.startMs,
+      allocatedStoppageId: allocation[source.id] ?? null,
+      visibleInUnallocatedFor: candidates[source.id] ?? null,
     };
   });
 }
@@ -189,7 +179,9 @@ function deriveRows(items, expanded, orders) {
     ].sort((a, b) => a - b);
 
     const allocated = ordered(
-      assetItems.filter((item) => item.allocatedStoppageId === STOPPAGE_ID),
+      assetItems.filter(
+        (item) => item.allocatedStoppageId === STOPPAGE_ID
+      ),
       orders.allocated
     );
 
@@ -204,14 +196,17 @@ function deriveRows(items, expanded, orders) {
 
     const topLevelReasons = ordered(
       assetItems.filter(
-        (item) => item.isStoppageReason && item.allocatedStoppageId == null
+        (item) =>
+          item.isStoppageReason &&
+          item.allocatedStoppageId == null
       ),
       orders.topLevel
     );
 
-    const hasStoppage = allocated.length > 0 || unallocated.length > 0;
+    const hasStoppage = allocated.length > 0;
 
-    const hasChildren = hasStoppage || topLevelReasons.length > 0;
+    const hasChildren =
+      hasStoppage || topLevelReasons.length > 0;
 
     rows.push({
       id: assetRowId,
@@ -231,46 +226,66 @@ function deriveRows(items, expanded, orders) {
 
     if (hasStoppage) {
       const timed = allocated.filter(
-        (item) => item.startMs != null && item.durationMinutes != null
+        (item) =>
+          item.startMs != null &&
+          item.durationMinutes != null
       );
 
       const startMs = timed.length
-        ? Math.min(...timed.map((item) => item.startMs))
+        ? Math.min(
+            ...timed.map((item) => item.startMs)
+          )
         : null;
 
       const finishMs = timed.length
         ? Math.max(
-            ...timed.map((item) => item.startMs + item.durationMinutes * MINUTE)
+            ...timed.map(
+              (item) =>
+                item.startMs +
+                item.durationMinutes * MINUTE
+            )
           )
         : null;
 
-      const peakResourceDemand = calculateResourceSeries(allocated)
+      const peakResourceDemand = calculateResourceSeries(
+        allocated
+      )
         .map((resource) => ({
           code: resource.code,
           peak: Math.max(
             0,
-            ...resource.intervals.map((interval) => interval.count)
+            ...resource.intervals.map(
+              (interval) => interval.count
+            )
           ),
         }))
         .filter((resource) => resource.peak > 0)
-        .map((resource) => `${resource.peak}x ${resource.code}`)
+        .map(
+          (resource) =>
+            `${resource.peak}x ${resource.code}`
+        )
         .join(', ');
 
       const allocatedPriorities = allocated
         .map((item) => item.priority)
         .filter((priority) => priority != null);
 
-      const stoppageId = `${assetDefinition.id}-${STOPPAGE_ID}`;
+      const stoppageId =
+        `${assetDefinition.id}-${STOPPAGE_ID}`;
 
-      const unallocatedId = `${stoppageId}-unallocated`;
+      const unallocatedId =
+        `${stoppageId}-unallocated`;
 
       rows.push({
         id: stoppageId,
         rowKey: stoppageId,
         type: 'stoppage',
         level: 1,
-        hasChildren: true,
-        description: `${assetDefinition.id}: 250HR SERVICE AND SEAT`,
+        hasChildren:
+          allocated.length > 0 ||
+          unallocated.length > 0,
+        description:
+          `${assetDefinition.id}: PLANNED STOPPAGE`,
         asset: assetDefinition.id,
         priority: allocatedPriorities.length
           ? Math.min(...allocatedPriorities)
@@ -279,7 +294,9 @@ function deriveRows(items, expanded, orders) {
         durationMinutes:
           startMs == null || finishMs == null
             ? null
-            : Math.round((finishMs - startMs) / MINUTE),
+            : Math.round(
+                (finishMs - startMs) / MINUTE
+              ),
         resourceDemand: peakResourceDemand,
         forecastMarkers: [
           ...new Set(
@@ -318,7 +335,10 @@ function deriveRows(items, expanded, orders) {
           priority: null,
         });
 
-        if (unallocated.length > 0 && expanded[unallocatedId]) {
+        if (
+          unallocated.length > 0 &&
+          expanded[unallocatedId]
+        ) {
           rows.push(
             ...unallocated.map((item) => ({
               ...item,
@@ -516,17 +536,23 @@ function TableRow({
   toggle,
   allocate,
   remove,
+  deleteStoppage,
   moveRow,
   canMove,
 }) {
-  const height = row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
+  const height =
+    row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
+
   const finishMs =
     row.startMs != null && row.durationMinutes != null
       ? row.startMs + row.durationMinutes * MINUTE
       : null;
-  const reorderable = ['allocated', 'unallocated', 'topReason'].includes(
-    row.type
-  );
+
+  const reorderable = [
+    'allocated',
+    'unallocated',
+    'topReason',
+  ].includes(row.type);
 
   return (
     <div
@@ -535,10 +561,15 @@ function TableRow({
     >
       <div
         className="flex min-w-0 items-start border-r px-2 py-2"
-        style={{ paddingLeft: `${8 + row.level * 18}px` }}
+        style={{
+          paddingLeft: `${8 + row.level * 18}px`,
+        }}
       >
         {row.hasChildren ? (
-          <button className="mr-1 shrink-0" onClick={() => toggle(row.id)}>
+          <button
+            className="mr-1 shrink-0"
+            onClick={() => toggle(row.id)}
+          >
             {expanded ? '▼' : '▶'}
           </button>
         ) : (
@@ -548,7 +579,9 @@ function TableRow({
         <span className="min-w-0 flex-1 truncate">
           {row.workOrderId ? (
             <>
-              <WorkOrderLink item={row}>{row.workOrderId}</WorkOrderLink>{' '}
+              <WorkOrderLink item={row}>
+                {row.workOrderId}
+              </WorkOrderLink>{' '}
               {row.operationId}
               {': '}
               {row.description}
@@ -567,6 +600,7 @@ function TableRow({
             >
               ↑
             </button>
+
             <button
               className="h-5 w-5 border disabled:text-slate-300"
               disabled={!canMove(row, 1)}
@@ -578,36 +612,65 @@ function TableRow({
         )}
       </div>
 
-      <div className="overflow-hidden border-r px-2 py-2 text-[11px] whitespace-nowrap">
+      <div className="overflow-hidden whitespace-nowrap border-r px-2 py-2 text-[11px]">
         {row.type === 'allocated' && (
-          <button className="text-sky-700" onClick={() => remove(row.id)}>
+          <button
+            className="text-sky-700"
+            onClick={() => remove(row.id)}
+          >
             [-] Remove from Stoppage
           </button>
         )}
-        {(row.type === 'unallocated' || row.type === 'topReason') && (
-          <button className="text-sky-700" onClick={() => allocate(row.id)}>
-            {row.workOrderId ? '[+] Add to Stoppage' : '[+] Create Work Order'}
+
+        {row.type === 'unallocated' && (
+          <button
+            className="text-sky-700"
+            onClick={() => allocate(row.id)}
+          >
+            [+] Add to Stoppage
           </button>
         )}
+
+        {row.type === 'topReason' && (
+          <button
+            className="text-sky-700"
+            onClick={() => allocate(row.id)}
+          >
+            [+] Create Stoppage
+          </button>
+        )}
+
         {row.type === 'stoppage' && (
-          <span className="text-sky-700">[-] Delete Stoppage</span>
+          <button
+            className="text-sky-700"
+            onClick={() => deleteStoppage(row)}
+          >
+            [-] Delete Stoppage
+          </button>
         )}
       </div>
 
-      <div className="border-r px-2 py-2 font-semibold">{row.asset}</div>
-      <div className="border-r px-2 py-2 whitespace-nowrap">
+      <div className="border-r px-2 py-2 font-semibold">
+        {row.asset}
+      </div>
+
+      <div className="whitespace-nowrap border-r px-2 py-2">
         {formatPriority(row.priority)}
       </div>
-      <div className="border-r px-2 py-2 whitespace-nowrap">
+
+      <div className="whitespace-nowrap border-r px-2 py-2">
         {formatDateTime(row.startMs)}
       </div>
-      <div className="border-r px-2 py-2 whitespace-nowrap">
+
+      <div className="whitespace-nowrap border-r px-2 py-2">
         {formatDateTime(finishMs)}
       </div>
-      <div className="border-r px-2 py-2 whitespace-nowrap">
+
+      <div className="whitespace-nowrap border-r px-2 py-2">
         {formatDateTime(row.forecastMs)}
       </div>
-      <div className="border-r px-2 py-2 whitespace-nowrap">
+
+      <div className="whitespace-nowrap border-r px-2 py-2">
         {row.resourceDemand ?? ''}
       </div>
     </div>
@@ -760,6 +823,7 @@ function ItemsPanel({
   toggle,
   allocate,
   remove,
+  deleteStoppage,
   startDrag,
   moveToForecast,
   widths,
@@ -770,6 +834,7 @@ function ItemsPanel({
   const template = widths.map((width) => `${width}px`).join(' ');
   const contentWidth = widths.reduce((sum, width) => sum + width, 0);
   const [tableScrollLeft, setTableScrollLeft] = React.useState(0);
+
   const headings = [
     'Description',
     'Action',
@@ -783,6 +848,7 @@ function ItemsPanel({
 
   const resize = (event, index) => {
     event.preventDefault();
+
     const originX = event.clientX;
     const originWidth = widths[index];
 
@@ -825,8 +891,11 @@ function ItemsPanel({
   const canMove = (row, direction) => {
     const ids = idsFor(row);
     const index = ids.indexOf(row.id);
+
     return (
-      index >= 0 && index + direction >= 0 && index + direction < ids.length
+      index >= 0 &&
+      index + direction >= 0 &&
+      index + direction < ids.length
     );
   };
 
@@ -835,15 +904,25 @@ function ItemsPanel({
       const key = sectionKey(row);
       const visibleIds = idsFor(row);
       const existing = current[key] ?? [];
+
       const ids = [
         ...existing.filter((id) => visibleIds.includes(id)),
         ...visibleIds.filter((id) => !existing.includes(id)),
       ];
+
       const from = ids.indexOf(row.id);
       const to = from + direction;
-      if (from < 0 || to < 0 || to >= ids.length) return current;
+
+      if (from < 0 || to < 0 || to >= ids.length) {
+        return current;
+      }
+
       [ids[from], ids[to]] = [ids[to], ids[from]];
-      return { ...current, [key]: ids };
+
+      return {
+        ...current,
+        [key]: ids,
+      };
     });
   };
 
@@ -862,9 +941,10 @@ function ItemsPanel({
             {headings.map((heading, index) => (
               <div
                 key={heading}
-                className="relative overflow-hidden border-r px-2 py-2 whitespace-nowrap"
+                className="relative overflow-hidden whitespace-nowrap border-r px-2 py-2"
               >
                 {heading}
+
                 <div
                   className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
                   onPointerDown={(event) => resize(event, index)}
@@ -877,7 +957,7 @@ function ItemsPanel({
         <TimelineHeader scrollLeft={timeline.scrollLeft} />
       </div>
 
-      <div className="min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="min-h-0 overflow-x-hidden overflow-y-auto">
         <div className="grid grid-cols-[630px_minmax(0,1fr)]">
           <div
             className="overflow-x-auto border-r"
@@ -888,13 +968,14 @@ function ItemsPanel({
             <div style={{ width: contentWidth }}>
               {rows.map((row) => (
                 <TableRow
-                  key={`table-${row.rowKey}`}
+          key={`table-${row.rowKey}`}
                   row={row}
                   template={template}
                   expanded={expanded[row.id]}
                   toggle={toggle}
                   allocate={allocate}
                   remove={remove}
+                  deleteStoppage={deleteStoppage}
                   moveRow={moveRow}
                   canMove={canMove}
                 />
@@ -1073,7 +1154,8 @@ export default function PlanningGridFixedAnnotationsV10() {
     descriptions: true,
   });
   const [allocation, setAllocation] = React.useState(sampleAllocation);
-  const [offsets, setOffsets] = React.useState(sampleOffsets);
+  const [schedule, setSchedule] = React.useState(sampleSchedule);
+  const [candidates, setCandidates] = React.useState(sampleCandidates);
   const [expanded, setExpanded] = React.useState(sampleExpanded);
   const [expandedResources, setExpandedResources] = React.useState(
     sampleExpandedResources
@@ -1084,53 +1166,63 @@ export default function PlanningGridFixedAnnotationsV10() {
   const [orders, setOrders] = React.useState(sampleOrders);
 
   const timeline = useTimelineScroll();
-  const items = applyState(allocation, offsets);
+  const items = applyState(allocation, schedule, candidates);
   const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
   const rows = deriveRows(items, expanded, orders);
   const resourceSeries = calculateResourceSeries(items);
 
   const setManyStarts = (updates) => {
-    setOffsets((current) => {
+    setSchedule((current) => {
       const next = { ...current };
-
+  
       for (const update of updates) {
-        const source = workItems.find((item) => item.id === update.id);
         const item = itemById[update.id];
-        if (
-          !source ||
-          !item ||
-          source.startMs == null ||
-          item.durationMinutes == null
-        ) {
+  
+        if (!item || item.durationMinutes == null) {
           continue;
         }
-
+  
         const durationMs = item.durationMinutes * MINUTE;
-        next[update.id] =
-          clamp(snapDateTime(update.startMs), START, END - durationMs) -
-          source.startMs;
+  
+        next[update.id] = {
+          startMs: clamp(
+            snapDateTime(update.startMs),
+            START,
+            END - durationMs
+          ),
+        };
       }
-
+  
       return next;
     });
   };
 
   const moveToForecast = (row, forecastMs) => {
     const target = snapDateTime(forecastMs);
-
+  
     if (row.type !== 'stoppage') {
-      setManyStarts([{ id: row.id, startMs: target }]);
+      setManyStarts([
+        {
+          id: row.id,
+          startMs: target,
+        },
+      ]);
+  
       return;
     }
-
-    if (row.startMs == null) return;
-
+  
+    if (row.startMs == null) {
+      return;
+    }
+  
     const delta = target - row.startMs;
+  
     setManyStarts(
       items
         .filter(
           (item) =>
-            item.allocatedStoppageId === row.id &&
+            item.asset === row.asset &&
+            item.allocatedStoppageId === STOPPAGE_ID &&
             item.startMs != null &&
             item.durationMinutes != null
         )
@@ -1142,31 +1234,41 @@ export default function PlanningGridFixedAnnotationsV10() {
   };
 
   const startDrag = (event, row) => {
-    if (row.startMs == null || row.durationMinutes == null) return;
-
+    if (
+      row.startMs == null ||
+      row.durationMinutes == null
+    ) {
+      return;
+    }
+  
     event.preventDefault();
     event.stopPropagation();
-
+  
     const originX = event.clientX;
+  
     const members =
       row.type === 'stoppage'
         ? items.filter(
             (item) =>
-              item.allocatedStoppageId === row.id &&
+              item.asset === row.asset &&
+              item.allocatedStoppageId === STOPPAGE_ID &&
               item.startMs != null &&
               item.durationMinutes != null
           )
         : [itemById[row.id]].filter(Boolean);
-
+  
     const origins = Object.fromEntries(
-      members.map((item) => [item.id, item.startMs])
+      members.map((item) => [
+        item.id,
+        item.startMs,
+      ])
     );
-
+  
     const move = (moveEvent) => {
       const delta = snapDuration(
         ((moveEvent.clientX - originX) / GANTT_WIDTH) * SPAN
       );
-
+  
       setManyStarts(
         members.map((item) => ({
           id: item.id,
@@ -1174,13 +1276,13 @@ export default function PlanningGridFixedAnnotationsV10() {
         }))
       );
     };
-
+  
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
     };
-
+  
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
@@ -1200,36 +1302,108 @@ export default function PlanningGridFixedAnnotationsV10() {
         <Config overlays={overlays} setOverlays={setOverlays} />
 
         <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <ItemsPanel
-            rows={rows}
-            overlays={overlays}
-            timeline={timeline}
-            expanded={expanded}
-            toggle={(id) => {
-              setExpanded((current) => ({
-                ...current,
-                [id]: !current[id],
-              }));
-            }}
-            allocate={(id) => {
-              setAllocation((current) => ({
-                ...current,
-                [id]: STOPPAGE_ID,
-              }));
-            }}
-            remove={(id) => {
-              setAllocation((current) => ({
-                ...current,
-                [id]: null,
-              }));
-            }}
-            startDrag={startDrag}
-            moveToForecast={moveToForecast}
-            widths={widths}
-            setWidths={setWidths}
-            orders={orders}
-            setOrders={setOrders}
-          />
+        <ItemsPanel
+  rows={rows}
+  overlays={overlays}
+  timeline={timeline}
+  expanded={expanded}
+  toggle={(id) => {
+    setExpanded((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  }}
+  allocate={(id) => {
+    const selectedItem = itemById[id];
+
+    if (!selectedItem) {
+      return;
+    }
+
+    setAllocation((current) => ({
+      ...current,
+      [id]: STOPPAGE_ID,
+    }));
+
+    if (selectedItem.isStoppageReason) {
+      setCandidates((current) => {
+        const next = { ...current };
+
+        for (const item of items) {
+          if (
+            item.asset === selectedItem.asset &&
+            item.id !== selectedItem.id &&
+            item.allocatedStoppageId == null
+          ) {
+            next[item.id] = STOPPAGE_ID;
+          }
+        }
+
+        return next;
+      });
+
+      setExpanded((current) => ({
+        ...current,
+        [`asset-${selectedItem.asset}`]: true,
+        [`${selectedItem.asset}-${STOPPAGE_ID}`]: true,
+        [`${selectedItem.asset}-${STOPPAGE_ID}-unallocated`]: true,
+      }));
+    }
+  }}
+  remove={(id) => {
+    setAllocation((current) => ({
+      ...current,
+      [id]: null,
+    }));
+
+    setCandidates((current) => ({
+      ...current,
+      [id]: STOPPAGE_ID,
+    }));
+  }}
+  deleteStoppage={(row) => {
+    setAllocation((current) => {
+      const next = { ...current };
+
+      for (const item of items) {
+        if (
+          item.asset === row.asset &&
+          item.allocatedStoppageId === STOPPAGE_ID
+        ) {
+          next[item.id] = null;
+        }
+      }
+
+      return next;
+    });
+
+    setCandidates((current) => {
+      const next = { ...current };
+
+      for (const item of items) {
+        if (item.asset === row.asset) {
+          next[item.id] = null;
+        }
+      }
+
+      return next;
+    });
+
+    setExpanded((current) => {
+      const next = { ...current };
+
+      delete next[row.id];
+      delete next[`${row.id}-unallocated`];
+
+      return next;
+    });
+  }}
+  orecast={moveToForecast}
+  widths={widths}
+  setWidths={setWidths}
+  orders={orders}
+  setOrders={setOrders}
+/>
 
           <ResourcesPanel
             resourceSeries={resourceSeries}
