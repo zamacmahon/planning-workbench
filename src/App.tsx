@@ -23,11 +23,17 @@ const SAP_ORDER_URL =
   'https://my301631.s4hana.ondemand.com/ui#MaintenanceOrder-change?MaintenanceOrder=';
 
 const PRIORITIES = {
-  1: { label: 'Very High', colour: '#dc2626' },
-  2: { label: 'High', colour: '#f97316' },
-  3: { label: 'Medium', colour: '#eab308' },
-  4: { label: 'Low', colour: '#16a34a' },
+  1: { label: 'Very High', colour: '#dc2626', symbol: '⬟' },
+  2: { label: 'High', colour: '#f97316', symbol: '◆' },
+  3: { label: 'Medium', colour: '#eab308', symbol: '■' },
+  4: { label: 'Low', colour: '#16a34a', symbol: '●' },
 };
+
+const AVAILABILITIES = {
+  1: { label: 'All Available', colour: '#16a34a', symbol: '⬢' },
+  2: { label: 'Possibly Available', colour: '#eab308', symbol: '⬡' },
+  3: { label: 'Not Available', colour: '#dc2626', symbol: '✕' },
+}
 
 const clamp = (value, lower, upper) => Math.max(lower, Math.min(upper, value));
 const snapDateTime = (value) => Math.round(value / SNAP) * SNAP;
@@ -192,7 +198,7 @@ function deriveRows(items, stoppages, expanded, orders) {
       (item) => item.allocatedStoppageId == null
     );
 
-    const topLevelOrderKey = `topLevel:${assetDefinition.id}`;
+    const topLevelOrderKey = `topLevel:${assetDefinition.id} `;
 
     const topLevelReasons = ordered(
       unallocatedAssetItems.filter(
@@ -234,8 +240,8 @@ function deriveRows(items, stoppages, expanded, orders) {
     }
 
     for (const stoppage of assetStoppages) {
-      const allocatedOrderKey = `allocated:${stoppage.id}`;
-      const unallocatedOrderKey = `unallocated:${stoppage.id}`;
+      const allocatedOrderKey = `allocated:${stoppage.id} `;
+      const unallocatedOrderKey = `unallocated:${stoppage.id} `;
 
       const allocated = ordered(
         assetItems.filter(
@@ -286,7 +292,7 @@ function deriveRows(items, stoppages, expanded, orders) {
           .filter((resource) => resource.peak > 0)
           .map(
             (resource) =>
-              `${resource.peak}x ${resource.code}`
+              `${resource.peak}x ${resource.code} `
           )
           .join(', ');
 
@@ -294,6 +300,14 @@ function deriveRows(items, stoppages, expanded, orders) {
         .map((item) => item.priority)
         .filter((priority) => priority != null);
 
+      const allocatedAvailabilities = allocated
+        .map((item) => item.availability)
+        .filter((availability) => availability != null);
+
+      const stoppageAvailability =
+        allocatedAvailabilities.length > 0
+          ? Math.max(...allocatedAvailabilities)
+          : null;
       const stoppageForecastMarkers = [
         ...new Set(
           allocated
@@ -309,7 +323,7 @@ function deriveRows(items, stoppages, expanded, orders) {
       ].sort((a, b) => a - b);
 
       const unallocatedId =
-        `${stoppage.id}-unallocated`;
+        `${stoppage.id} -unallocated`;
 
       rows.push({
         id: stoppage.id,
@@ -324,6 +338,7 @@ function deriveRows(items, stoppages, expanded, orders) {
         priority: allocatedPriorities.length
           ? Math.min(...allocatedPriorities)
           : null,
+        availability: stoppageAvailability,
         startMs,
         durationMinutes:
           startMs == null || finishMs == null
@@ -344,7 +359,7 @@ function deriveRows(items, stoppages, expanded, orders) {
         ...allocated.map((item) => ({
           ...item,
           rowKey:
-            `${stoppage.id}-allocated-${item.id}`,
+            `${stoppage.id} -allocated - ${item.id} `,
           type: 'allocated',
           level: 2,
           stoppageId: stoppage.id,
@@ -372,7 +387,7 @@ function deriveRows(items, stoppages, expanded, orders) {
           ...unallocated.map((item) => ({
             ...item,
             rowKey:
-              `${stoppage.id}-unallocated-${item.id}`,
+              `${stoppage.id} -unallocated - ${item.id} `,
             type: 'unallocated',
             level: 3,
             stoppageId: stoppage.id,
@@ -385,7 +400,7 @@ function deriveRows(items, stoppages, expanded, orders) {
     rows.push(
       ...topLevelReasons.map((item) => ({
         ...item,
-        rowKey: `top-${item.id}`,
+        rowKey: `top - ${item.id} `,
         type: 'topReason',
         level: 1,
         orderKey: topLevelOrderKey,
@@ -472,6 +487,14 @@ function Config({ overlays, setOverlays }) {
           />
           Show Priorities
         </label>
+        <label className="mb-2 flex gap-2">
+          <input
+            type="checkbox"
+            checked={overlays.availability}
+            onChange={() => toggle('availability')}
+          />
+          Show Material Availability
+        </label>
         <label className="flex gap-2">
           <input
             type="checkbox"
@@ -535,7 +558,7 @@ function TimelineHeader({ scrollLeft }) {
 
 function WorkOrderLink({ item, children, className = '' }) {
   if (!item.workOrderId) return children;
-  const url = `${SAP_ORDER_URL}${encodeURIComponent(item.workOrderId)}`;
+  const url = `${SAP_ORDER_URL}${encodeURIComponent(item.workOrderId)} `;
 
   return (
     <a
@@ -543,7 +566,7 @@ function WorkOrderLink({ item, children, className = '' }) {
       target="_blank"
       rel="noopener noreferrer"
       title={url}
-      className={`text-sky-700 underline underline-offset-2 hover:text-sky-900 ${className}`}
+      className={`text - sky - 700 underline underline - offset - 2 hover: text - sky - 900 ${className} `}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -588,13 +611,13 @@ function TableRow({
 
   return (
     <div
-      className={`grid ${height} border-b border-slate-200 text-xs`}
+      className={`grid ${height} border - b border - slate - 200 text - xs`}
       style={{ gridTemplateColumns: template }}
     >
       <div
         className="flex min-w-0 items-start border-r px-2 py-2"
         style={{
-          paddingLeft: `${8 + row.level * 18}px`,
+          paddingLeft: `${8 + row.level * 18} px`,
         }}
       >
         {row.hasChildren ? (
@@ -709,40 +732,99 @@ function TableRow({
   );
 }
 
-function BarAnnotation({ row, durationMs, overlays }) {
-  if (row.startMs == null || durationMs == null) return null;
+function BarAnnotation({
+  row,
+  durationMs,
+  overlays,
+}) {
+  if (
+    row.startMs == null ||
+    durationMs == null
+  ) {
+    return null;
+  }
 
   const priority = PRIORITIES[row.priority];
-  const showLabel = overlays.descriptions && Boolean(row.workOrderId);
-  const showPriority = overlays.priorities && Boolean(priority);
+  const availability =
+    AVAILABILITIES[row.availability];
 
-  if (!showLabel && !showPriority) return null;
+  const showLabel =
+    overlays.descriptions &&
+    Boolean(row.workOrderId);
+
+  const showPriority =
+    overlays.priorities &&
+    Boolean(priority);
+
+  const showAvailability =
+    overlays.availability &&
+    Boolean(availability);
+
+  if (
+    !showLabel &&
+    !showPriority &&
+    !showAvailability
+  ) {
+    return null;
+  }
 
   return (
     <div
       className="absolute top-8 z-30 flex -translate-x-1/2 items-start justify-center gap-1"
       style={{
-        left: `calc(${leftAt(row.startMs)} + (${widthFor(durationMs)} / 2))`,
+        left: `calc(${leftAt(row.startMs)
+          } + (${widthFor(
+            durationMs
+          )
+          } / 2))`,
       }}
     >
-      {showLabel && (
-        <div className="border-2 border-cyan-500 bg-white px-1 text-center text-[10px]">
-          <WorkOrderLink item={row} className="block whitespace-nowrap">
-            MO {row.workOrderId}
-          </WorkOrderLink>
-          <span className="whitespace-nowrap">{row.description}</span>
-        </div>
+
+      {showAvailability && (
+        <span
+          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
+          style={{
+            color: availability.colour,
+          }}
+          title={`Material availability ${row.availability}: ${availability.label}`}
+          aria-label={`Material availability ${row.availability}: ${availability.label}`}
+        >
+          {availability.symbol}
+        </span>
       )}
 
-      {showPriority && (
-        <span
-          className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-white shadow ring-1 ring-slate-700"
-          style={{ backgroundColor: priority.colour }}
-          title={`Priority ${row.priority} ${priority.label}`}
-          aria-label={`Priority ${row.priority} ${priority.label}`}
-        />
-      )}
-    </div>
+      {
+        showLabel && (
+          <div className="border-2 border-cyan-500 bg-white px-1 text-center text-[10px]">
+            <WorkOrderLink
+              item={row}
+              className="block whitespace-nowrap"
+            >
+              MO {row.workOrderId}
+            </WorkOrderLink>
+
+            <span className="whitespace-nowrap">
+              {row.description}
+            </span>
+          </div>
+        )
+      }
+
+      {
+        showPriority && (
+          <span
+            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
+            style={{
+              color: priority.colour,
+            }}
+            title={`Priority ${row.priority}: ${priority.label}`}
+            aria-label={`Priority ${row.priority}: ${priority.label}`}
+          >
+            {priority.symbol}
+          </span>
+        )
+      }
+    </div >
   );
 }
 
@@ -760,29 +842,29 @@ function GanttRow({
       ? null
       : row.durationMinutes * MINUTE;
 
-      const markers =
-      row.type === 'asset'
-        ? (row.forecastMarkers ?? []).map((forecastMs) => ({
-            forecastMs,
-            isStoppageReason: true,
-          }))
+  const markers =
+    row.type === 'asset'
+      ? (row.forecastMarkers ?? []).map((forecastMs) => ({
+        forecastMs,
+        isStoppageReason: true,
+      }))
       : row.type === 'stoppage'
         ? (row.forecastMarkers ?? []).map((marker) => ({
-            forecastMs:
-              typeof marker === 'number'
-                ? marker
-                : marker.forecastMs,
-            isStoppageReason: true,
-          }))
+          forecastMs:
+            typeof marker === 'number'
+              ? marker
+              : marker.forecastMs,
+          isStoppageReason: true,
+        }))
         : row.forecastMs == null
           ? []
           : [
-              {
-                forecastMs: row.forecastMs,
-                isStoppageReason:
-                  row.isStoppageReason,
-              },
-            ];
+            {
+              forecastMs: row.forecastMs,
+              isStoppageReason:
+                row.isStoppageReason,
+            },
+          ];
 
   return (
     <div
@@ -806,9 +888,8 @@ function GanttRow({
 
       {row.startMs != null && durationMs != null && (
         <div
-          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${
-            row.barClass ?? ''
-          }`}
+          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''
+            }`}
           style={{
             left: leftAt(row.startMs),
             width: widthFor(durationMs),
@@ -846,11 +927,11 @@ function GanttRow({
           const tooltip =
             row.type === 'asset'
               ? `${forecastType}: ${formatFullDateTime(
-                  forecastMs
-                )}`
+                forecastMs
+              )}`
               : `${forecastType}: ${formatFullDateTime(
-                  forecastMs
-                )}\nClick to move start date to align to forecast.`;
+                forecastMs
+              )}\nClick to move start date to align to forecast.`;
 
           const forecastClass =
             marker.isStoppageReason
@@ -1263,6 +1344,7 @@ export default function PlanningGridFixedAnnotationsV10() {
     forecasts: true,
     resources: true,
     priorities: true,
+    availability: true,
     descriptions: true,
   });
   const [stoppages, setStoppages] = React.useState(sampleStoppages);
@@ -1413,7 +1495,7 @@ export default function PlanningGridFixedAnnotationsV10() {
   const allocateWork = (row) => {
     if (row.type === 'topReason') {
       const stoppageId = `stop-${crypto.randomUUID()}`;
-  
+
       setStoppages((current) => ({
         ...current,
         [stoppageId]: {
@@ -1422,22 +1504,22 @@ export default function PlanningGridFixedAnnotationsV10() {
           description: `${row.asset}: ${row.description}`,
         },
       }));
-  
+
       setAllocation((current) => ({
         ...current,
         [row.id]: stoppageId,
       }));
-  
+
       setExpanded((current) => ({
         ...current,
         [`asset-${row.asset}`]: true,
         [stoppageId]: true,
         [`${stoppageId}-unallocated`]: true,
       }));
-  
+
       return;
     }
-  
+
     if (
       row.type === 'unallocated' &&
       row.stoppageId
@@ -1448,7 +1530,7 @@ export default function PlanningGridFixedAnnotationsV10() {
       }));
     }
   };
-  
+
   const removeWork = (row) => {
     if (
       row.type !== 'allocated' ||
@@ -1456,7 +1538,7 @@ export default function PlanningGridFixedAnnotationsV10() {
     ) {
       return;
     }
-  
+
     setAllocation((current) => ({
       ...current,
       [row.id]: null,
@@ -1467,42 +1549,42 @@ export default function PlanningGridFixedAnnotationsV10() {
     if (row.type !== 'stoppage') {
       return;
     }
-  
+
     setAllocation((current) => {
       const next = { ...current };
-  
+
       for (const item of items) {
         if (item.allocatedStoppageId === row.id) {
           next[item.id] = null;
         }
       }
-  
+
       return next;
     });
-  
+
     setStoppages((current) => {
       const next = { ...current };
-  
+
       delete next[row.id];
-  
+
       return next;
     });
-  
+
     setExpanded((current) => {
       const next = { ...current };
-  
+
       delete next[row.id];
       delete next[`${row.id}-unallocated`];
-  
+
       return next;
     });
-  
+
     setOrders((current) => {
       const next = { ...current };
-  
+
       delete next[`allocated:${row.id}`];
       delete next[`unallocated:${row.id}`];
-  
+
       return next;
     });
   };

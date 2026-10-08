@@ -7,6 +7,8 @@ export type DateTimeMs = number;
 
 export type Priority = 1 | 2 | 3 | 4;
 
+export type Availability = 1 | 2 | 3;
+
 export type StoppageId = string;
 
 export interface PriorityDefinition {
@@ -48,6 +50,11 @@ export interface RawWorkItem {
    * Planning priority from the imported source.
    */
   priority: Priority;
+
+  /**
+   * Material availability from the imported source.
+   */
+  availability: Availability;
 
   /**
    * Imported baseline start date and time.
@@ -181,6 +188,7 @@ export interface OverlayState {
   forecasts: boolean;
   resources: boolean;
   priorities: boolean;
+  availability: boolean;
   descriptions: boolean;
 }
 
