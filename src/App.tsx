@@ -194,6 +194,39 @@ function deriveRows(items, stoppages, expanded, orders) {
       (stoppage) => stoppage.asset === assetDefinition.id
     );
 
+    const assetStoppageSummaries = assetStoppages
+      .map((stoppage) => {
+        const allocated = assetItems.filter(
+          (item) =>
+            item.allocatedStoppageId === stoppage.id
+        );
+
+        if (allocated.length === 0) {
+          return null;
+        }
+
+        const startMs = Math.min(
+          ...allocated.map((item) => item.startMs)
+        );
+
+        const finishMs = Math.max(
+          ...allocated.map(
+            (item) =>
+              item.startMs +
+              item.durationMinutes * MINUTE
+          )
+        );
+
+        return {
+          id: stoppage.id,
+          startMs,
+          durationMinutes:
+            (finishMs - startMs) / MINUTE,
+          description: stoppage.description,
+        };
+      })
+      .filter(Boolean);
+
     const unallocatedAssetItems = assetItems.filter(
       (item) => item.allocatedStoppageId == null
     );
@@ -233,6 +266,7 @@ function deriveRows(items, stoppages, expanded, orders) {
       asset: assetDefinition.id,
       priority: null,
       forecastMarkers: assetForecastMarkers,
+      stoppageSummaries: assetStoppageSummaries,
     });
 
     if (!expanded[assetRowId]) {
@@ -845,26 +879,31 @@ function GanttRow({
   const markers =
     row.type === 'asset'
       ? (row.forecastMarkers ?? []).map((forecastMs) => ({
-        forecastMs,
-        isStoppageReason: true,
-      }))
-      : row.type === 'stoppage'
-        ? (row.forecastMarkers ?? []).map((marker) => ({
-          forecastMs:
-            typeof marker === 'number'
-              ? marker
-              : marker.forecastMs,
+          forecastMs,
           isStoppageReason: true,
         }))
+      : row.type === 'stoppage'
+        ? (row.forecastMarkers ?? []).map((marker) => ({
+            forecastMs:
+              typeof marker === 'number'
+                ? marker
+                : marker.forecastMs,
+            isStoppageReason: true,
+          }))
         : row.forecastMs == null
           ? []
           : [
-            {
-              forecastMs: row.forecastMs,
-              isStoppageReason:
-                row.isStoppageReason,
-            },
-          ];
+              {
+                forecastMs: row.forecastMs,
+                isStoppageReason:
+                  row.isStoppageReason,
+              },
+            ];
+
+  const stoppageSummaries =
+    row.type === 'asset'
+      ? row.stoppageSummaries ?? []
+      : [];
 
   return (
     <div
@@ -872,6 +911,37 @@ function GanttRow({
       style={{ width: GANTT_WIDTH }}
     >
       <TimelineGrid />
+
+      {row.type === 'asset' &&
+        stoppageSummaries.map((summary) => {
+          const summaryDurationMs =
+            summary.durationMinutes * MINUTE;
+
+          return (
+            <div
+              key={summary.id}
+              className="absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white"
+              style={{
+                left: leftAt(summary.startMs),
+                width: widthFor(summaryDurationMs),
+                touchAction: 'none',
+              }}
+              title={`${summary.description}
+${formatFullDateTime(summary.startMs)} to ${formatFullDateTime(
+                summary.startMs + summaryDurationMs
+              )}`}
+              onPointerDown={(event) =>
+                startDrag(event, {
+                  ...summary,
+                  type: 'stoppage',
+                  asset: row.asset,
+                })
+              }
+            >
+              {formatDuration(summary.durationMinutes)}
+            </div>
+          );
+        })}
 
       {overlays.resources &&
         row.resourceDemand &&
@@ -886,22 +956,25 @@ function GanttRow({
           </div>
         )}
 
-      {row.startMs != null && durationMs != null && (
-        <div
-          className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''
+      {row.type !== 'asset' &&
+        row.startMs != null &&
+        durationMs != null && (
+          <div
+            className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${
+              row.barClass ?? ''
             }`}
-          style={{
-            left: leftAt(row.startMs),
-            width: widthFor(durationMs),
-            touchAction: 'none',
-          }}
-          onPointerDown={(event) =>
-            startDrag(event, row)
-          }
-        >
-          {formatDuration(row.durationMinutes)}
-        </div>
-      )}
+            style={{
+              left: leftAt(row.startMs),
+              width: widthFor(durationMs),
+              touchAction: 'none',
+            }}
+            onPointerDown={(event) =>
+              startDrag(event, row)
+            }
+          >
+            {formatDuration(row.durationMinutes)}
+          </div>
+        )}
 
       {overlays.forecasts &&
         markers.map((marker, index) => {
@@ -927,11 +1000,11 @@ function GanttRow({
           const tooltip =
             row.type === 'asset'
               ? `${forecastType}: ${formatFullDateTime(
-                forecastMs
-              )}`
+                  forecastMs
+                )}`
               : `${forecastType}: ${formatFullDateTime(
-                forecastMs
-              )}\nClick to move start date to align to forecast.`;
+                  forecastMs
+                )}\nClick to move start date to align to forecast.`;
 
           const forecastClass =
             marker.isStoppageReason
@@ -974,11 +1047,13 @@ function GanttRow({
           );
         })}
 
-      <BarAnnotation
-        row={row}
-        durationMs={durationMs}
-        overlays={overlays}
-      />
+      {row.type !== 'asset' && (
+        <BarAnnotation
+          row={row}
+          durationMs={durationMs}
+          overlays={overlays}
+        />
+      )}
     </div>
   );
 }
