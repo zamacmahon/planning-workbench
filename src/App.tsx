@@ -191,7 +191,8 @@ function deriveRows(items, stoppages, expanded, orders) {
     );
 
     const assetStoppages = Object.values(stoppages).filter(
-      (stoppage) => stoppage.asset === assetDefinition.id
+      (stoppage) =>
+        stoppage.asset === assetDefinition.id
     );
 
     const assetStoppageSummaries = assetStoppages
@@ -233,26 +234,30 @@ function deriveRows(items, stoppages, expanded, orders) {
 
         const availabilities = allocated
           .map((item) => item.availability)
-          .filter((availability) => availability != null);
+          .filter(
+            (availability) =>
+              availability != null
+          );
 
-        const resourceDemand = calculateResourceSeries(
-          allocated
-        )
-          .map((resource) => ({
-            code: resource.code,
-            peak: Math.max(
-              0,
-              ...resource.intervals.map(
-                (interval) => interval.count
-              )
-            ),
-          }))
-          .filter((resource) => resource.peak > 0)
-          .map(
-            (resource) =>
-              `${resource.peak}x ${resource.code}`
-          )
-          .join(', ');
+        const resourceDemand =
+          calculateResourceSeries(allocated)
+            .map((resource) => ({
+              code: resource.code,
+              peak: Math.max(
+                0,
+                ...resource.intervals.map(
+                  (interval) => interval.count
+                )
+              ),
+            }))
+            .filter(
+              (resource) => resource.peak > 0
+            )
+            .map(
+              (resource) =>
+                `${resource.peak}x ${resource.code}`
+            )
+            .join(', ');
 
         return {
           id: stoppage.id,
@@ -275,11 +280,14 @@ function deriveRows(items, stoppages, expanded, orders) {
       })
       .filter(Boolean);
 
-    const unallocatedAssetItems = assetItems.filter(
-      (item) => item.allocatedStoppageId == null
-    );
+    const unallocatedAssetItems =
+      assetItems.filter(
+        (item) =>
+          item.allocatedStoppageId == null
+      );
 
-    const topLevelOrderKey = `topLevel:${assetDefinition.id} `;
+    const topLevelOrderKey =
+      `topLevel:${assetDefinition.id}`;
 
     const topLevelReasons = ordered(
       unallocatedAssetItems.filter(
@@ -288,19 +296,25 @@ function deriveRows(items, stoppages, expanded, orders) {
       orders[topLevelOrderKey] ?? []
     );
 
-    const assetForecastMarkers = [
-      ...new Set(
-        assetItems
-          .filter(
-            (item) =>
-              item.isStoppageReason &&
-              item.forecastMs != null &&
-              item.forecastMs >= START &&
-              item.forecastMs <= END
-          )
-          .map((item) => item.forecastMs)
-      ),
-    ].sort((a, b) => a - b);
+    const assetForecastMarkers = assetItems
+      .filter(
+        (item) =>
+          item.isStoppageReason &&
+          item.forecastMs != null &&
+          item.forecastMs >= START &&
+          item.forecastMs <= END
+      )
+      .map((item) => ({
+        id: item.id,
+        forecastMs: item.forecastMs,
+        workOrderId: item.workOrderId,
+        description: item.description,
+        isStoppageReason: true,
+      }))
+      .sort(
+        (a, b) =>
+          a.forecastMs - b.forecastMs
+      );
 
     rows.push({
       id: assetRowId,
@@ -314,7 +328,8 @@ function deriveRows(items, stoppages, expanded, orders) {
       asset: assetDefinition.id,
       priority: null,
       forecastMarkers: assetForecastMarkers,
-      stoppageSummaries: assetStoppageSummaries,
+      stoppageSummaries:
+        assetStoppageSummaries,
     });
 
     if (!expanded[assetRowId]) {
@@ -322,13 +337,17 @@ function deriveRows(items, stoppages, expanded, orders) {
     }
 
     for (const stoppage of assetStoppages) {
-      const allocatedOrderKey = `allocated:${stoppage.id} `;
-      const unallocatedOrderKey = `unallocated:${stoppage.id} `;
+      const allocatedOrderKey =
+        `allocated:${stoppage.id}`;
+
+      const unallocatedOrderKey =
+        `unallocated:${stoppage.id}`;
 
       const allocated = ordered(
         assetItems.filter(
           (item) =>
-            item.allocatedStoppageId === stoppage.id
+            item.allocatedStoppageId ===
+            stoppage.id
         ),
         orders[allocatedOrderKey] ?? []
       );
@@ -371,10 +390,12 @@ function deriveRows(items, stoppages, expanded, orders) {
               )
             ),
           }))
-          .filter((resource) => resource.peak > 0)
+          .filter(
+            (resource) => resource.peak > 0
+          )
           .map(
             (resource) =>
-              `${resource.peak}x ${resource.code} `
+              `${resource.peak}x ${resource.code}`
           )
           .join(', ');
 
@@ -382,30 +403,44 @@ function deriveRows(items, stoppages, expanded, orders) {
         .map((item) => item.priority)
         .filter((priority) => priority != null);
 
-      const allocatedAvailabilities = allocated
-        .map((item) => item.availability)
-        .filter((availability) => availability != null);
+      const allocatedAvailabilities =
+        allocated
+          .map((item) => item.availability)
+          .filter(
+            (availability) =>
+              availability != null
+          );
 
       const stoppageAvailability =
         allocatedAvailabilities.length > 0
-          ? Math.max(...allocatedAvailabilities)
+          ? Math.max(
+            ...allocatedAvailabilities
+          )
           : null;
-      const stoppageForecastMarkers = [
-        ...new Set(
-          allocated
-            .filter(
-              (item) =>
-                item.isStoppageReason &&
-                item.forecastMs != null &&
-                item.forecastMs >= START &&
-                item.forecastMs <= END
-            )
-            .map((item) => item.forecastMs)
-        ),
-      ].sort((a, b) => a - b);
+
+      const stoppageForecastMarkers =
+        allocated
+          .filter(
+            (item) =>
+              item.isStoppageReason &&
+              item.forecastMs != null &&
+              item.forecastMs >= START &&
+              item.forecastMs <= END
+          )
+          .map((item) => ({
+            id: item.id,
+            forecastMs: item.forecastMs,
+            workOrderId: item.workOrderId,
+            description: item.description,
+            isStoppageReason: true,
+          }))
+          .sort(
+            (a, b) =>
+              a.forecastMs - b.forecastMs
+          );
 
       const unallocatedId =
-        `${stoppage.id} -unallocated`;
+        `${stoppage.id}-unallocated`;
 
       rows.push({
         id: stoppage.id,
@@ -417,20 +452,29 @@ function deriveRows(items, stoppages, expanded, orders) {
           unallocated.length > 0,
         description: stoppage.description,
         asset: assetDefinition.id,
-        priority: allocatedPriorities.length
-          ? Math.min(...allocatedPriorities)
-          : null,
-        availability: stoppageAvailability,
+        priority:
+          allocatedPriorities.length > 0
+            ? Math.min(
+              ...allocatedPriorities
+            )
+            : null,
+        availability:
+          stoppageAvailability,
         startMs,
         durationMinutes:
-          startMs == null || finishMs == null
+          startMs == null ||
+            finishMs == null
             ? null
             : Math.round(
-              (finishMs - startMs) / MINUTE
+              (finishMs - startMs) /
+              MINUTE
             ),
-        resourceDemand: peakResourceDemand,
-        forecastMarkers: stoppageForecastMarkers,
-        barClass: 'bg-cyan-800 text-white',
+        resourceDemand:
+          peakResourceDemand,
+        forecastMarkers:
+          stoppageForecastMarkers,
+        barClass:
+          'bg-cyan-800 text-white',
       });
 
       if (!expanded[stoppage.id]) {
@@ -441,7 +485,7 @@ function deriveRows(items, stoppages, expanded, orders) {
         ...allocated.map((item) => ({
           ...item,
           rowKey:
-            `${stoppage.id} -allocated - ${item.id} `,
+            `${stoppage.id}-allocated-${item.id}`,
           type: 'allocated',
           level: 2,
           stoppageId: stoppage.id,
@@ -454,7 +498,8 @@ function deriveRows(items, stoppages, expanded, orders) {
         rowKey: unallocatedId,
         type: 'unallocatedHeader',
         level: 2,
-        hasChildren: unallocated.length > 0,
+        hasChildren:
+          unallocated.length > 0,
         description: 'Unallocated Work',
         asset: assetDefinition.id,
         priority: null,
@@ -469,7 +514,7 @@ function deriveRows(items, stoppages, expanded, orders) {
           ...unallocated.map((item) => ({
             ...item,
             rowKey:
-              `${stoppage.id} -unallocated - ${item.id} `,
+              `${stoppage.id}-unallocated-${item.id}`,
             type: 'unallocated',
             level: 3,
             stoppageId: stoppage.id,
@@ -482,7 +527,7 @@ function deriveRows(items, stoppages, expanded, orders) {
     rows.push(
       ...topLevelReasons.map((item) => ({
         ...item,
-        rowKey: `top - ${item.id} `,
+        rowKey: `top-${item.id}`,
         type: 'topReason',
         level: 1,
         orderKey: topLevelOrderKey,
@@ -693,13 +738,13 @@ function TableRow({
 
   return (
     <div
-      className={`grid ${height} border - b border - slate - 200 text - xs`}
+      className={`grid ${height} border-b border-slate-200 text-xs`}
       style={{ gridTemplateColumns: template }}
     >
       <div
         className="flex min-w-0 items-start border-r px-2 py-2"
         style={{
-          paddingLeft: `${8 + row.level * 18} px`,
+          paddingLeft: `${8 + row.level * 18}px`,
         }}
       >
         {row.hasChildren ? (
@@ -910,6 +955,46 @@ function BarAnnotation({
   );
 }
 
+function formatWorkTooltip({
+  workOrderId,
+  description,
+  startMs,
+  finishMs,
+  forecastMs,
+}) {
+  const lines = [];
+
+  if (workOrderId) {
+    lines.push(`Work order: ${workOrderId}`);
+  }
+
+  if (description) {
+    lines.push(description);
+  }
+
+  if (startMs != null) {
+    lines.push(
+      `Start: ${formatFullDateTime(startMs)}`
+    );
+  }
+
+  if (finishMs != null) {
+    lines.push(
+      `Finish: ${formatFullDateTime(finishMs)}`
+    );
+  }
+
+  if (forecastMs != null) {
+    lines.push(
+      `Forecast: ${formatFullDateTime(
+        forecastMs
+      )}`
+    );
+  }
+
+  return lines.join('\n');
+}
+
 function GanttRow({
   row,
   overlays,
@@ -917,7 +1002,9 @@ function GanttRow({
   moveToForecast,
 }) {
   const height =
-    row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
+    row.type === 'unallocatedHeader'
+      ? 'h-8'
+      : 'h-16';
 
   const durationMs =
     row.durationMinutes == null
@@ -925,28 +1012,23 @@ function GanttRow({
       : row.durationMinutes * MINUTE;
 
   const markers =
-    row.type === 'asset'
-      ? (row.forecastMarkers ?? []).map((forecastMs) => ({
-        forecastMs,
-        isStoppageReason: true,
-      }))
-      : row.type === 'stoppage'
-        ? (row.forecastMarkers ?? []).map((marker) => ({
-          forecastMs:
-            typeof marker === 'number'
-              ? marker
-              : marker.forecastMs,
-          isStoppageReason: true,
-        }))
-        : row.forecastMs == null
-          ? []
-          : [
-            {
-              forecastMs: row.forecastMs,
-              isStoppageReason:
-                row.isStoppageReason,
-            },
-          ];
+    row.type === 'asset' ||
+      row.type === 'stoppage'
+      ? row.forecastMarkers ?? []
+      : row.forecastMs == null
+        ? []
+        : [
+          {
+            id: row.id,
+            forecastMs: row.forecastMs,
+            workOrderId:
+              row.workOrderId ?? null,
+            description:
+              row.description ?? null,
+            isStoppageReason:
+              row.isStoppageReason ?? false,
+          },
+        ];
 
   const stoppageSummaries =
     row.type === 'asset'
@@ -963,13 +1045,16 @@ function GanttRow({
       {row.type === 'asset' &&
         stoppageSummaries.map((summary) => {
           const summaryDurationMs =
-            summary.durationMinutes * MINUTE;
+            summary.durationMinutes *
+            MINUTE;
 
           const priority =
             PRIORITIES[summary.priority];
 
           const availability =
-            AVAILABILITIES[summary.availability];
+            AVAILABILITIES[
+            summary.availability
+            ];
 
           return (
             <React.Fragment key={summary.id}>
@@ -990,16 +1075,23 @@ function GanttRow({
               <div
                 className="absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white"
                 style={{
-                  left: leftAt(summary.startMs),
-                  width: widthFor(summaryDurationMs),
+                  left: leftAt(
+                    summary.startMs
+                  ),
+                  width: widthFor(
+                    summaryDurationMs
+                  ),
                   touchAction: 'none',
                 }}
-                title={`${summary.description}
-${formatFullDateTime(
-                  summary.startMs
-                )} to ${formatFullDateTime(
-                  summary.startMs + summaryDurationMs
-                )}`}
+                title={formatWorkTooltip({
+                  workOrderId: null,
+                  description: summary.description,
+                  startMs: summary.startMs,
+                  finishMs:
+                    summary.startMs +
+                    summaryDurationMs,
+                  forecastMs: null,
+                })}
                 onPointerDown={(event) =>
                   startDrag(event, {
                     ...summary,
@@ -1033,9 +1125,10 @@ ${formatFullDateTime(
                               availability.colour,
                           }}
                           title={`Material availability ${summary.availability}: ${availability.label}`}
-                          aria-label={`Material availability ${summary.availability}: ${availability.label}`}
                         >
-                          {availability.symbol}
+                          {
+                            availability.symbol
+                          }
                         </span>
                       )}
 
@@ -1044,10 +1137,10 @@ ${formatFullDateTime(
                         <span
                           className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
                           style={{
-                            color: priority.colour,
+                            color:
+                              priority.colour,
                           }}
                           title={`Priority ${summary.priority}: ${priority.label}`}
-                          aria-label={`Priority ${summary.priority}: ${priority.label}`}
                         >
                           {priority.symbol}
                         </span>
@@ -1059,12 +1152,15 @@ ${formatFullDateTime(
         })}
 
       {overlays.resources &&
+        row.type !== 'asset' &&
         row.resourceDemand &&
         row.startMs != null && (
           <div
             className="absolute top-3 z-20 text-[10px] text-red-700"
             style={{
-              left: `calc(${leftAt(row.startMs)} - 54px)`,
+              left: `calc(${leftAt(
+                row.startMs
+              )} - 54px)`,
             }}
           >
             {row.resourceDemand}
@@ -1082,43 +1178,74 @@ ${formatFullDateTime(
               width: widthFor(durationMs),
               touchAction: 'none',
             }}
+            title={formatWorkTooltip({
+              workOrderId:
+                row.type === 'stoppage'
+                  ? null
+                  : row.workOrderId ?? null,
+              description: row.description,
+              startMs: row.startMs,
+              finishMs:
+                row.startMs + durationMs,
+              forecastMs:
+                row.type === 'stoppage'
+                  ? null
+                  : row.forecastMs ?? null,
+            })}
             onPointerDown={(event) =>
               startDrag(event, row)
             }
           >
-            {formatDuration(row.durationMinutes)}
+            {formatDuration(
+              row.durationMinutes
+            )}
           </div>
         )}
 
       {overlays.forecasts &&
         markers.map((marker, index) => {
-          const forecastMs = marker.forecastMs;
+          const forecastMs =
+            marker.forecastMs;
 
           const showVarianceLine =
             row.type !== 'asset' &&
             row.startMs != null;
 
-          const lineStart = showVarianceLine
-            ? Math.min(row.startMs, forecastMs)
-            : null;
+          const lineStart =
+            showVarianceLine
+              ? Math.min(
+                row.startMs,
+                forecastMs
+              )
+              : null;
 
-          const lineWidth = showVarianceLine
-            ? Math.abs(row.startMs - forecastMs)
-            : 0;
+          const lineWidth =
+            showVarianceLine
+              ? Math.abs(
+                row.startMs -
+                forecastMs
+              )
+              : 0;
 
           const forecastType =
             marker.isStoppageReason
               ? 'Stoppage reason forecast'
               : 'Work forecast';
 
-          const tooltip =
-            row.type === 'asset'
-              ? `${forecastType}: ${formatFullDateTime(
-                forecastMs
-              )}`
-              : `${forecastType}: ${formatFullDateTime(
-                forecastMs
-              )}\nClick to move start date to align to forecast.`;
+          const tooltip = [
+            `${forecastType}: ${formatFullDateTime(
+              forecastMs
+            )}`,
+            marker.workOrderId
+              ? `Work order: ${marker.workOrderId}`
+              : null,
+            marker.description ?? null,
+            row.type !== 'asset'
+              ? 'Click to move start date to align to forecast.'
+              : null,
+          ]
+            .filter(Boolean)
+            .join('\n');
 
           const forecastClass =
             marker.isStoppageReason
@@ -1127,15 +1254,19 @@ ${formatFullDateTime(
 
           return (
             <React.Fragment
-              key={`${forecastMs}-${marker.isStoppageReason}-${index}`}
+              key={`${marker.id}-${forecastMs}-${index}`}
             >
               {lineStart != null &&
                 lineWidth > 0 && (
                   <div
                     className="absolute top-5 z-10 border-t border-dotted border-green-700"
                     style={{
-                      left: leftAt(lineStart),
-                      width: widthFor(lineWidth),
+                      left: leftAt(
+                        lineStart
+                      ),
+                      width: widthFor(
+                        lineWidth
+                      ),
                     }}
                   />
                 )}
@@ -1147,7 +1278,9 @@ ${formatFullDateTime(
                 }}
                 title={tooltip}
                 onClick={() => {
-                  if (row.type !== 'asset') {
+                  if (
+                    row.type !== 'asset'
+                  ) {
                     moveToForecast(
                       row,
                       forecastMs

@@ -128,7 +128,7 @@ export interface WorkItemPlanningState {
  */
 export interface WorkItem
   extends RawWorkItem,
-    WorkItemPlanningState {}
+  WorkItemPlanningState { }
 
 export interface ResourceDefinition {
   code: string;
@@ -159,6 +159,25 @@ export interface ResourceSeries
   intervals: ResourceInterval[];
 }
 
+export interface ForecastMarker {
+  id: string;
+  forecastMs: DateTimeMs;
+  workOrderId: string | null;
+  description: string | null;
+  isStoppageReason: boolean;
+}
+
+export interface StoppageSummary {
+  id: StoppageId;
+  asset: string;
+  description: string;
+  startMs: DateTimeMs;
+  durationMinutes: number;
+  priority: Priority | null;
+  availability: Availability | null;
+  resourceDemand: string;
+}
+
 export type PlanningRowType =
   | 'asset'
   | 'stoppage'
@@ -175,12 +194,9 @@ export interface PlanningRow extends Partial<WorkItem> {
   hasChildren?: boolean;
   description: string;
   asset: string;
-  forecastMarkers?: DateTimeMs[];
+  forecastMarkers?: ForecastMarker[];
+  stoppageSummaries?: StoppageSummary[];
   orderKey?: string;
-
-  /**
-   * Parent stoppage for allocated and unallocated rows.
-   */
   stoppageId?: StoppageId;
 }
 
