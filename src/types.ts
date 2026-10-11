@@ -133,9 +133,43 @@ export interface WorkItem
 export interface ResourceDefinition {
   code: string;
   label: string;
-  capacity: number;
   colour: string;
 }
+
+export interface ResourceCapacityInterval {
+  id: string;
+
+  /**
+   * Resource whose capacity is being defined.
+   *
+   * Example: "HDF"
+   */
+  resourceCode: string;
+
+  /**
+   * Start of the capacity interval.
+   */
+  startMs: DateTimeMs;
+
+  /**
+   * End of the capacity interval.
+   */
+  endMs: DateTimeMs;
+
+  /**
+   * Available capacity during this interval.
+   *
+   * Null means no capacity data has been entered.
+   * Null is treated as zero for capacity calculations,
+   * but should generate a missing-data warning.
+   *
+   * Zero means capacity was explicitly entered as zero.
+   */
+  capacity: number | null;
+}
+
+export type ResourceCapacityState =
+  ResourceCapacityInterval[];
 
 export interface ResourceDemand {
   code: string;
@@ -150,7 +184,27 @@ export interface ResourceContributor {
 export interface ResourceInterval {
   startMs: DateTimeMs;
   endMs: DateTimeMs;
+
+  /**
+   * Resource demand during this interval.
+   */
   count: number;
+
+  /**
+   * Effective available capacity.
+   *
+   * Missing capacity data is represented as zero.
+   */
+  capacity: number;
+
+  /**
+   * Whether capacity data exists for this interval.
+   *
+   * False means capacity is treated as zero and should
+   * display a missing-data warning.
+   */
+  hasCapacityData: boolean;
+
   contributors: ResourceContributor[];
 }
 

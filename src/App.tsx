@@ -3,6 +3,7 @@ import React from 'react';
 import { workItems } from './data/workItems';
 import { resourceDefinitions } from './data/resources';
 import { assets } from './data/assets';
+import { resourceCapacity } from './data/resourceCapacity';
 
 import {
   sampleStoppages,
@@ -60,6 +61,45 @@ const fullFormatter = new Intl.DateTimeFormat('en-AU', {
   hour12: false,
 });
 
+const capacityDateFormatter =
+  new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Perth',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+
+const capacityTimeFormatter =
+  new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Perth',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+const formatDateInput = (value) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Perth',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value));
+
+  const year = parts.find(
+    (part) => part.type === 'year'
+  )?.value;
+
+  const month = parts.find(
+    (part) => part.type === 'month'
+  )?.value;
+
+  const day = parts.find(
+    (part) => part.type === 'day'
+  )?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
 const formatDateTime = (value) =>
   value == null ? '' : shortFormatter.format(new Date(value)).replace(',', '');
 const formatFullDateTime = (value) =>
@@ -94,7 +134,10 @@ function parseResourceDemand(value) {
     }));
 }
 
-function calculateResourceSeries(items) {
+function calculateResourceSeries(
+  items,
+  capacityIntervals = []
+) {
   const allocatedTimed = items.filter(
     (item) =>
       item.allocatedStoppageId != null &&
@@ -102,63 +145,124 @@ function calculateResourceSeries(items) {
       item.durationMinutes != null
   );
 
-  const markers = [
-    ...new Set(
+  return resourceDefinitions.map((resource) => {
+    const resourceCapacityIntervals =
+      capacityIntervals.filter(
+        (interval) =>
+          interval.resourceCode === resource.code &&
+          interval.endMs > START &&
+          interval.startMs < END
+      );
+
+    const demandBoundaries =
       allocatedTimed.flatMap((item) => [
-        item.startMs,
-        item.startMs + item.durationMinutes * MINUTE,
-      ])
-    ),
-  ].sort((a, b) => a - b);
+        clamp(item.startMs, START, END),
+        clamp(
+          item.startMs +
+            item.durationMinutes * MINUTE,
+          START,
+          END
+        ),
+      ]);
 
-  return resourceDefinitions.map((resource) => ({
-    ...resource,
+    const capacityBoundaries =
+      resourceCapacityIntervals.flatMap(
+        (interval) => [
+          clamp(interval.startMs, START, END),
+          clamp(interval.endMs, START, END),
+        ]
+      );
 
-    intervals: markers
+    const markers = [
+      ...new Set([
+        START,
+        END,
+        ...demandBoundaries,
+        ...capacityBoundaries,
+      ]),
+    ]
+      .filter(
+        (value) =>
+          value >= START &&
+          value <= END
+      )
+      .sort((a, b) => a - b);
+
+    const intervals = markers
       .slice(0, -1)
       .map((startMs, index) => {
         const endMs = markers[index + 1];
 
-        const contributors = allocatedTimed.flatMap((item) => {
-          const itemEndMs =
-            item.startMs + item.durationMinutes * MINUTE;
+        const contributors =
+          allocatedTimed.flatMap((item) => {
+            const itemEndMs =
+              item.startMs +
+              item.durationMinutes * MINUTE;
 
-          if (
-            item.startMs >= endMs ||
-            itemEndMs <= startMs
-          ) {
-            return [];
-          }
+            if (
+              item.startMs >= endMs ||
+              itemEndMs <= startMs
+            ) {
+              return [];
+            }
 
-          const demand = parseResourceDemand(
-            item.resourceDemand
-          ).find(
-            (entry) => entry.code === resource.code
+            const demand =
+              parseResourceDemand(
+                item.resourceDemand
+              ).find(
+                (entry) =>
+                  entry.code === resource.code
+              );
+
+            return demand
+              ? [
+                  {
+                    id: item.id,
+                    count: demand.count,
+                  },
+                ]
+              : [];
+          });
+
+        const capacityInterval =
+          resourceCapacityIntervals.find(
+            (interval) =>
+              interval.startMs <= startMs &&
+              interval.endMs >= endMs
           );
 
-          return demand
-            ? [
-              {
-                id: item.id,
-                count: demand.count,
-              },
-            ]
-            : [];
-        });
+        const hasCapacityData =
+          capacityInterval != null &&
+          capacityInterval.capacity != null;
 
         return {
           startMs,
           endMs,
+
           count: contributors.reduce(
             (sum, contributor) =>
               sum + contributor.count,
             0
           ),
+
+          capacity:
+            capacityInterval?.capacity ?? 0,
+
+          hasCapacityData,
+
           contributors,
         };
       })
-      .filter((interval) => interval.count > 0),
-  }));
+      .filter(
+        (interval) =>
+          interval.endMs > interval.startMs
+      );
+
+    return {
+      ...resource,
+      intervals,
+    };
+  });
 }
 
 function applyState(allocation, schedule) {
@@ -1526,68 +1630,223 @@ function ItemsPanel({
   );
 }
 
-function ResourceDescription({ resource, expanded, toggle }) {
-  const peak = Math.max(
+function ResourceDescription({
+  resource,
+  expanded,
+  toggle,
+}) {
+  const peakDemand = Math.max(
     0,
-    ...resource.intervals.map((interval) => interval.count)
+    ...resource.intervals.map(
+      (interval) => interval.count
+    )
   );
+
+  const peakCapacity = Math.max(
+    0,
+    ...resource.intervals.map(
+      (interval) => interval.capacity
+    )
+  );
+
+  const hasMissingCapacity =
+    resource.intervals.some(
+      (interval) =>
+        !interval.hasCapacityData
+    );
 
   return (
     <div
-      className={`${expanded ? 'h-24' : 'h-8'
-        } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
+      className={`${
+        expanded ? 'h-24' : 'h-8'
+      } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
     >
-      <button onClick={() => toggle(resource.code)}>
-        {expanded ? '▼' : '▶'} {resource.label}
+      <button
+        onClick={() => toggle(resource.code)}
+      >
+        {expanded ? '▼' : '▶'}{' '}
+        {resource.label}
+
         <span className="ml-2 font-normal text-slate-500">
-          peak {peak} / capacity {resource.capacity}
+          peak demand {peakDemand} / peak capacity{' '}
+          {peakCapacity}
         </span>
+
+        {hasMissingCapacity && (
+          <span
+            className="ml-2 font-normal text-amber-700"
+            title="Capacity data is missing for part of the planning period. Missing capacity is treated as zero."
+          >
+            ⚠ Missing capacity
+          </span>
+        )}
       </button>
     </div>
   );
 }
 
-function ResourceGraph({ resource, expanded }) {
+function ResourceGraph({
+  resource,
+  expanded,
+}) {
   const maxLevel = Math.max(
-    resource.capacity,
-    ...resource.intervals.map((interval) => interval.count),
-    1
+    1,
+    ...resource.intervals.flatMap(
+      (interval) => [
+        interval.count,
+        interval.capacity,
+      ]
+    )
   );
 
   return (
     <div
-      className={`relative ${expanded ? 'h-24' : 'h-8'
-        } border-b border-slate-200 bg-white`}
+      className={`relative ${
+        expanded ? 'h-24' : 'h-8'
+      } border-b border-slate-200 bg-white`}
       style={{ width: GANTT_WIDTH }}
     >
       <TimelineGrid />
 
       {expanded &&
         resource.intervals.map((interval) => {
-          const overCapacity = interval.count > resource.capacity;
-          const tooltip = `${formatFullDateTime(
-            interval.startMs
-          )} to ${formatFullDateTime(interval.endMs)}\n${resource.code}: ${interval.count
-            } in use\nOrders: ${interval.contributors
-              .map((item) => item.id)
-              .join(', ')}`;
+          const overCapacity =
+            interval.count >
+            interval.capacity;
+
+          const overCapacityAmount =
+            Math.max(
+              0,
+              interval.count -
+                interval.capacity
+            );
+
+          const missingCapacity =
+            !interval.hasCapacityData;
+
+          const tooltip = [
+            `${formatFullDateTime(
+              interval.startMs
+            )} to ${formatFullDateTime(
+              interval.endMs
+            )}`,
+            `${resource.code} demand: ${interval.count}`,
+            `${resource.code} capacity: ${interval.capacity}`,
+            overCapacity
+              ? `Over capacity: ${overCapacityAmount}`
+              : 'Within capacity',
+            missingCapacity
+              ? 'Warning: no capacity data entered. Effective capacity is 0.'
+              : null,
+            interval.contributors.length > 0
+              ? `Orders: ${interval.contributors
+                  .map(
+                    (contributor) =>
+                      contributor.id
+                  )
+                  .join(', ')}`
+              : 'Orders: none',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const intervalWidth =
+            interval.endMs -
+            interval.startMs;
+
+          const demandHeight =
+            interval.count === 0
+              ? 0
+              : Math.max(
+                  3,
+                  (interval.count /
+                    maxLevel) *
+                    76
+                );
+
+          const capacityHeight =
+            interval.capacity === 0
+              ? 0
+              : Math.max(
+                  2,
+                  (interval.capacity /
+                    maxLevel) *
+                    76
+                );
 
           return (
-            <div
+            <React.Fragment
               key={`${interval.startMs}-${interval.endMs}`}
-              className="absolute bottom-1"
-              style={{
-                left: leftAt(interval.startMs),
-                right: `${100 - ((interval.endMs - START) / SPAN) * 100}%`,
-                height: `${(interval.count / maxLevel) * 80}px`,
-                backgroundColor: overCapacity ? '#dc2626' : resource.colour,
-              }}
-              title={tooltip}
             >
-              <span className="absolute left-1 top-0 text-[9px] text-white">
-                {interval.count}
-              </span>
-            </div>
+              {missingCapacity && (
+                <div
+                  className="absolute bottom-1 top-1 z-10 border border-amber-300 bg-amber-50/70"
+                  style={{
+                    left: leftAt(
+                      interval.startMs
+                    ),
+                    width: widthFor(
+                      intervalWidth
+                    ),
+                  }}
+                  title={tooltip}
+                />
+              )}
+
+              {capacityHeight > 0 && (
+                <div
+                  className="pointer-events-none absolute bottom-1 z-20 border-t-2 border-dashed border-slate-700"
+                  style={{
+                    left: leftAt(
+                      interval.startMs
+                    ),
+                    width: widthFor(
+                      intervalWidth
+                    ),
+                    height: `${capacityHeight}px`,
+                  }}
+                />
+              )}
+
+              {demandHeight > 0 && (
+                <div
+                  className="absolute bottom-1 z-30"
+                  style={{
+                    left: leftAt(
+                      interval.startMs
+                    ),
+                    width: widthFor(
+                      intervalWidth
+                    ),
+                    height: `${demandHeight}px`,
+                    backgroundColor:
+                      overCapacity
+                        ? '#dc2626'
+                        : resource.colour,
+                  }}
+                  title={tooltip}
+                >
+                  <span className="absolute left-1 top-0 text-[9px] text-white">
+                    {interval.count}
+                  </span>
+                </div>
+              )}
+
+              {demandHeight === 0 && (
+                <div
+                  className="absolute bottom-1 z-30 h-2"
+                  style={{
+                    left: leftAt(
+                      interval.startMs
+                    ),
+                    width: widthFor(
+                      intervalWidth
+                    ),
+                  }}
+                  title={tooltip}
+                />
+              )}
+            </React.Fragment>
           );
         })}
     </div>
@@ -1661,7 +1920,771 @@ function ResourcesPanel({
   );
 }
 
+function ResourceCapacityScreen({
+  capacityIntervals,
+  setCapacityIntervals,
+}) {
+  const [startDate, setStartDate] =
+  React.useState(() => formatDateInput(START));
+
+  const [endDate, setEndDate] =
+    React.useState(() => formatDateInput(END));
+
+  const [shiftPreset, setShiftPreset] =
+    React.useState('06:00/18:00');
+
+  const [dayStart, setDayStart] =
+    React.useState('06:00');
+
+  const [dayEnd, setDayEnd] =
+    React.useState('18:00');
+
+  const [nightStart, setNightStart] =
+    React.useState('18:00');
+
+  const [nightEnd, setNightEnd] =
+    React.useState('06:00');
+
+  const [selectedCapacityRows, setSelectedCapacityRows] =
+    React.useState<string[]>([]);
+
+  const applyPreset = (value) => {
+    setShiftPreset(value);
+
+    if (value === '06:00/18:00') {
+      setDayStart('06:00');
+      setDayEnd('18:00');
+      setNightStart('18:00');
+      setNightEnd('06:00');
+      return;
+    }
+
+    if (value === '05:30/17:30') {
+      setDayStart('05:30');
+      setDayEnd('17:30');
+      setNightStart('17:30');
+      setNightEnd('05:30');
+    }
+  };
+
+  const nightEndsNextDay =
+    nightEnd <= nightStart;
+
+  const [capacities, setCapacities] = React.useState(() =>
+    Object.fromEntries(
+      resourceDefinitions.map((resource) => [
+        resource.code,
+        {
+          day: '',
+          night: '',
+        },
+      ])
+    )
+  );
+
+  const setCapacity = (
+    resourceCode,
+    shift,
+    value
+  ) => {
+    setCapacities((current) => ({
+      ...current,
+      [resourceCode]: {
+        ...current[resourceCode],
+        [shift]: value,
+      },
+    }));
+  };
+
+  const generateCapacity = () => {
+    if (!startDate || !endDate) {
+      return;
+    }
+
+    const [startYear, startMonth, startDay] =
+      startDate.split('-').map(Number);
+
+    const [endYear, endMonth, endDay] =
+      endDate.split('-').map(Number);
+
+    const firstDate = new Date(
+      startYear,
+      startMonth - 1,
+      startDay
+    );
+
+    const lastDate = new Date(
+      endYear,
+      endMonth - 1,
+      endDay
+    );
+
+    if (lastDate < firstDate) {
+      return;
+    }
+
+    const makeDateTime = (
+      date,
+      time,
+      dayOffset = 0
+    ) => {
+      const [hours, minutes] =
+        time.split(':').map(Number);
+
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate() + dayOffset,
+        hours,
+        minutes,
+        0,
+        0
+      ).getTime();
+    };
+
+    const generated = [];
+
+    for (
+      let date = new Date(firstDate);
+      date <= lastDate;
+      date.setDate(date.getDate() + 1)
+    ) {
+      const shifts = [
+        {
+          id: 'day',
+          start: dayStart,
+          end: dayEnd,
+        },
+        {
+          id: 'night',
+          start: nightStart,
+          end: nightEnd,
+        },
+      ];
+
+      for (const shift of shifts) {
+        const endDayOffset =
+          shift.end <= shift.start ? 1 : 0;
+
+        const intervalStartMs =
+          makeDateTime(date, shift.start);
+
+        const intervalEndMs =
+          makeDateTime(
+            date,
+            shift.end,
+            endDayOffset
+          );
+
+        for (const resource of resourceDefinitions) {
+          const input =
+            capacities[resource.code]?.[
+            shift.id
+            ] ?? '';
+
+          const capacity =
+            input === ''
+              ? null
+              : Number(input);
+
+          generated.push({
+            id: `${resource.code}-${intervalStartMs}-${shift.id}`,
+            resourceCode: resource.code,
+            startMs: intervalStartMs,
+            endMs: intervalEndMs,
+            capacity,
+          });
+        }
+      }
+    }
+
+    setCapacityIntervals((current) => {
+      const next = new Map(
+        current.map((interval) => [
+          interval.id,
+          interval,
+        ])
+      );
+
+      for (const interval of generated) {
+        next.set(interval.id, interval);
+      }
+
+      return [...next.values()].sort(
+        (a, b) =>
+          a.startMs - b.startMs ||
+          a.resourceCode.localeCompare(
+            b.resourceCode
+          )
+      );
+    });
+  };
+
+  const capacityTableRows = React.useMemo(() => {
+    const grouped = new Map();
+
+    for (const interval of capacityIntervals) {
+      const key =
+        `${interval.startMs}-${interval.endMs}`;
+
+      const existing = grouped.get(key) ?? {
+        id: key,
+        startMs: interval.startMs,
+        endMs: interval.endMs,
+        shift: '',
+        capacities: {},
+      };
+
+      existing.capacities[interval.resourceCode] =
+        interval.capacity;
+
+      grouped.set(key, existing);
+    }
+
+    return [...grouped.values()]
+      .map((row) => ({
+        ...row,
+        shift:
+          capacityTimeFormatter.format(
+            new Date(row.startMs)
+          ) === dayStart
+            ? 'DS'
+            : 'NS',
+      }))
+      .sort(
+        (a, b) => a.startMs - b.startMs
+      );
+  }, [
+    capacityIntervals,
+    dayStart,
+  ]);
+
+  const updateGeneratedCapacity = (
+    startMs,
+    endMs,
+    resourceCode,
+    value
+  ) => {
+    setCapacityIntervals((current) =>
+      current.map((interval) => {
+        const matches =
+          interval.startMs === startMs &&
+          interval.endMs === endMs &&
+          interval.resourceCode === resourceCode;
+
+        if (!matches) {
+          return interval;
+        }
+
+        return {
+          ...interval,
+          capacity:
+            value === ''
+              ? null
+              : Number(value),
+        };
+      })
+    );
+  };
+
+  const allCapacityRowsSelected =
+    capacityTableRows.length > 0 &&
+    capacityTableRows.every((row) =>
+      selectedCapacityRows.includes(row.id)
+    );
+
+  const someCapacityRowsSelected =
+    capacityTableRows.some((row) =>
+      selectedCapacityRows.includes(row.id)
+    );
+
+  const toggleCapacityRow = (rowId) => {
+    setSelectedCapacityRows((current) =>
+      current.includes(rowId)
+        ? current.filter((id) => id !== rowId)
+        : [...current, rowId]
+    );
+  };
+
+  const toggleAllCapacityRows = () => {
+    if (allCapacityRowsSelected) {
+      setSelectedCapacityRows([]);
+      return;
+    }
+
+    setSelectedCapacityRows(
+      capacityTableRows.map((row) => row.id)
+    );
+  };
+
+  const deleteSelectedCapacities = () => {
+    const selectedIntervals = new Set(
+      capacityTableRows
+        .filter((row) =>
+          selectedCapacityRows.includes(row.id)
+        )
+        .map(
+          (row) =>
+            `${row.startMs}-${row.endMs}`
+        )
+    );
+
+    setCapacityIntervals((current) =>
+      current.filter(
+        (interval) =>
+          !selectedIntervals.has(
+            `${interval.startMs}-${interval.endMs}`
+          )
+      )
+    );
+
+    setSelectedCapacityRows([]);
+  };
+
+  return (
+    <main className="min-h-0 flex-1 overflow-auto p-4">
+      <h2 className="text-lg font-semibold">
+        Resource Capacity
+      </h2>
+
+      <p className="mt-1 text-xs text-slate-600">
+        Define a repeating capacity pattern and expand it
+        into explicit resource capacity intervals.
+      </p>
+
+      <section className="mt-4 max-w-3xl border border-slate-300 bg-white">
+        <div className="border-b border-slate-300 px-3 py-2 text-sm font-semibold">
+          Capacity Pattern
+        </div>
+
+        <div className="grid gap-4 p-3">
+          <div>
+            <div className="mb-2 text-xs font-semibold">
+              Period
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="grid gap-1 text-xs">
+                <span>Start date</span>
+                <input
+                  type="date"
+                  className="border border-slate-300 px-2 py-1"
+                  value={startDate}
+                  onChange={(event) =>
+                    setStartDate(event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="grid gap-1 text-xs">
+                <span>End date</span>
+                <input
+                  type="date"
+                  className="border border-slate-300 px-2 py-1"
+                  value={endDate}
+                  onChange={(event) =>
+                    setEndDate(event.target.value)
+                  }
+                />
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-xs font-semibold">
+              Shift pattern
+            </div>
+
+            <label className="grid max-w-52 gap-1 text-xs">
+              <span>Preset</span>
+              <select
+                className="border border-slate-300 px-2 py-1"
+                value={shiftPreset}
+                onChange={(event) =>
+                  applyPreset(event.target.value)
+                }
+              >
+                <option value="06:00/18:00">
+                  06:00 / 18:00
+                </option>
+
+                <option value="05:30/17:30">
+                  05:30 / 17:30
+                </option>
+
+                <option value="custom">
+                  Custom
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid max-w-xl grid-cols-[100px_1fr_1fr_80px] items-end gap-2 text-xs">
+            <div />
+
+            <div className="font-semibold">
+              Start
+            </div>
+
+            <div className="font-semibold">
+              End
+            </div>
+
+            <div />
+
+            <div className="font-semibold">
+              Day shift
+            </div>
+
+            <input
+              type="time"
+              className="border border-slate-300 px-2 py-1"
+              value={dayStart}
+              onChange={(event) => {
+                setShiftPreset('custom');
+                setDayStart(event.target.value);
+              }}
+            />
+
+            <input
+              type="time"
+              className="border border-slate-300 px-2 py-1"
+              value={dayEnd}
+              onChange={(event) => {
+                setShiftPreset('custom');
+                setDayEnd(event.target.value);
+              }}
+            />
+
+            <div />
+
+            <div className="font-semibold">
+              Night shift
+            </div>
+
+            <input
+              type="time"
+              className="border border-slate-300 px-2 py-1"
+              value={nightStart}
+              onChange={(event) => {
+                setShiftPreset('custom');
+                setNightStart(event.target.value);
+              }}
+            />
+
+            <input
+              type="time"
+              className="border border-slate-300 px-2 py-1"
+              value={nightEnd}
+              onChange={(event) => {
+                setShiftPreset('custom');
+                setNightEnd(event.target.value);
+              }}
+            />
+
+            <div className="text-slate-600">
+              {nightEndsNextDay ? '+1 day' : ''}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-semibold">
+            Resource capacity
+          </div>
+
+          <div className="max-w-xl border border-slate-300">
+            <div className="grid grid-cols-[1fr_100px_100px] bg-slate-100 text-xs font-semibold">
+              <div className="border-r border-slate-300 px-2 py-2">
+                Resource
+              </div>
+
+              <div className="border-r border-slate-300 px-2 py-2 text-center">
+                Day shift
+              </div>
+
+              <div className="px-2 py-2 text-center">
+                Night shift
+              </div>
+            </div>
+
+            {resourceDefinitions.map((resource) => (
+              <div
+                key={resource.code}
+                className="grid grid-cols-[1fr_100px_100px] border-t border-slate-300 text-xs"
+              >
+                <div className="border-r border-slate-300 px-2 py-2">
+                  <div className="font-semibold">
+                    {resource.code}
+                  </div>
+
+                  <div className="text-[10px] text-slate-500">
+                    {resource.label}
+                  </div>
+                </div>
+
+                <div className="border-r border-slate-300 p-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="w-full border border-slate-300 px-2 py-1 text-right"
+                    placeholder="Blank"
+                    value={
+                      capacities[resource.code]?.day ?? ''
+                    }
+                    onChange={(event) =>
+                      setCapacity(
+                        resource.code,
+                        'day',
+                        event.target.value
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="p-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="w-full border border-slate-300 px-2 py-1 text-right"
+                    placeholder="Blank"
+                    value={
+                      capacities[resource.code]?.night ?? ''
+                    }
+                    onChange={(event) =>
+                      setCapacity(
+                        resource.code,
+                        'night',
+                        event.target.value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-2 text-[11px] text-slate-500">
+            Blank means no capacity data entered and will be
+            treated as zero with a warning. Enter 0 to explicitly
+            record zero capacity.
+          </div>
+        </div>
+
+
+
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            type="button"
+            className="bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+            onClick={generateCapacity}
+          >
+            Generate Capacity
+          </button>
+
+          {capacityIntervals.length > 0 && (
+            <span className="text-xs text-slate-600">
+              {capacityIntervals.length} capacity intervals generated
+            </span>
+          )}
+        </div>
+
+        {capacityTableRows.length > 0 && (
+          <section className="mt-4 border border-slate-300 bg-white">
+            <div className="border-b border-slate-300 px-3 py-2">
+              <div className="text-sm font-semibold">
+                Generated Capacity
+              </div>
+
+              <div className="mt-0.5 text-[11px] text-slate-500">
+                Explicit intervals generated from the capacity pattern.
+              </div>
+
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  className="border border-red-700 px-2 py-1 text-xs text-red-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+                  disabled={
+                    selectedCapacityRows.length === 0
+                  }
+                  onClick={deleteSelectedCapacities}
+                >
+                  Delete selected
+                </button>
+
+                {selectedCapacityRows.length > 0 && (
+                  <span className="text-xs text-slate-600">
+                    {selectedCapacityRows.length}{' '}
+                    {selectedCapacityRows.length === 1
+                      ? 'shift selected'
+                      : 'shifts selected'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100">
+                    <th className="w-10 border-b border-r border-slate-300 px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allCapacityRowsSelected}
+                        ref={(element) => {
+                          if (element) {
+                            element.indeterminate =
+                              someCapacityRowsSelected &&
+                              !allCapacityRowsSelected;
+                          }
+                        }}
+                        onChange={toggleAllCapacityRows}
+                        aria-label={
+                          allCapacityRowsSelected
+                            ? 'Deselect all displayed capacity rows'
+                            : 'Select all displayed capacity rows'
+                        }
+                      />
+                    </th>
+                    <th className="border-b border-r border-slate-300 px-2 py-2 text-left">
+                      Date
+                    </th>
+
+                    <th className="border-b border-r border-slate-300 px-2 py-2 text-left">
+                      Shift
+                    </th>
+
+                    <th className="border-b border-r border-slate-300 px-2 py-2 text-left">
+                      From
+                    </th>
+
+                    <th className="border-b border-r border-slate-300 px-2 py-2 text-left">
+                      To
+                    </th>
+
+                    {resourceDefinitions.map((resource) => (
+                      <th
+                        key={resource.code}
+                        className="border-b border-r border-slate-300 px-2 py-2 text-center"
+                        title={resource.label}
+                      >
+                        {resource.code}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {capacityTableRows.map((tableRow) => (
+                    <tr key={tableRow.id}>
+                      <td className="border-b border-r border-slate-300 px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedCapacityRows.includes(
+                            tableRow.id
+                          )}
+                          onChange={() =>
+                            toggleCapacityRow(tableRow.id)
+                          }
+                          aria-label={`Select ${tableRow.shift} capacity for ${capacityDateFormatter.format(
+                            new Date(tableRow.startMs)
+                          )}`}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap border-b border-r border-slate-300 px-2 py-2">
+                        {capacityDateFormatter.format(
+                          new Date(tableRow.startMs)
+                        )}
+                      </td>
+
+                      <td className="border-b border-r border-slate-300 px-2 py-2 font-semibold">
+                        {tableRow.shift}
+                      </td>
+
+                      <td className="whitespace-nowrap border-b border-r border-slate-300 px-2 py-2">
+                        {capacityTimeFormatter.format(
+                          new Date(tableRow.startMs)
+                        )}
+                      </td>
+
+                      <td className="whitespace-nowrap border-b border-r border-slate-300 px-2 py-2">
+                        {capacityDateFormatter.format(
+                          new Date(tableRow.endMs)
+                        )}{' '}
+                        {capacityTimeFormatter.format(
+                          new Date(tableRow.endMs)
+                        )}
+                      </td>
+
+                      {resourceDefinitions.map((resource) => {
+                        const capacity =
+                          tableRow.capacities[resource.code];
+
+                        const missing = capacity == null;
+
+                        return (
+                          <td
+                            key={resource.code}
+                            className={`border-b border-r border-slate-300 p-1 ${missing ? 'bg-amber-50' : ''
+                              }`}
+                            title={
+                              missing
+                                ? 'No capacity data entered. Effective capacity is 0.'
+                                : `Capacity: ${capacity}`
+                            }
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              {missing && (
+                                <span
+                                  className="text-amber-700"
+                                  title="No capacity data entered. Effective capacity is 0."
+                                >
+                                  ⚠
+                                </span>
+                              )}
+
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                className={`w-16 border px-2 py-1 text-right ${missing
+                                  ? 'border-amber-400 bg-amber-50'
+                                  : 'border-slate-300 bg-white'
+                                  }`}
+                                value={capacity ?? ''}
+                                placeholder="Blank"
+                                onChange={(event) =>
+                                  updateGeneratedCapacity(
+                                    tableRow.startMs,
+                                    tableRow.endMs,
+                                    resource.code,
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+      </section>
+    </main>
+  );
+}
+
 export default function PlanningGridFixedAnnotationsV10() {
+  const [screen, setScreen] = React.useState<
+    'planning' | 'resourceCapacity'
+  >('planning');
   const [overlays, setOverlays] = React.useState({
     forecasts: true,
     resources: true,
@@ -1680,6 +2703,10 @@ export default function PlanningGridFixedAnnotationsV10() {
     260, 170, 70, 105, 125, 125, 125, 100,
   ]);
   const [orders, setOrders] = React.useState(sampleOrders);
+  const [
+    capacityIntervals,
+    setCapacityIntervals,
+  ] = React.useState(resourceCapacity);
 
   const timeline = useTimelineScroll();
   const items = applyState(allocation, schedule);
@@ -1690,7 +2717,7 @@ export default function PlanningGridFixedAnnotationsV10() {
     expanded,
     orders
   );
-  const resourceSeries = calculateResourceSeries(items);
+  const resourceSeries = calculateResourceSeries(items, capacityIntervals);
 
   const setManyStarts = (updates) => {
     setSchedule((current) => {
@@ -1919,37 +2946,68 @@ export default function PlanningGridFixedAnnotationsV10() {
           The work-order label and priority marker share one centred annotation
           container beneath each scheduled bar.
         </p>
+        <div className="mt-2 flex gap-2">
+          <button
+            className={`border px-2 py-1 text-xs ${screen === 'planning'
+              ? 'bg-slate-900 text-white'
+              : 'bg-white'
+              }`}
+            onClick={() => setScreen('planning')}
+          >
+            Planning Grid
+          </button>
+
+          <button
+            className={`border px-2 py-1 text-xs ${screen === 'resourceCapacity'
+              ? 'bg-slate-900 text-white'
+              : 'bg-white'
+              }`}
+            onClick={() => setScreen('resourceCapacity')}
+          >
+            Resource Capacity
+          </button>
+        </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[180px_minmax(0,1fr)]">
-        <Config overlays={overlays} setOverlays={setOverlays} />
-
-        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <ItemsPanel
-            rows={rows}
+      {screen === 'planning' ? (
+        <div className="grid min-h-0 flex-1 grid-cols-[180px_minmax(0,1fr)]">
+          <Config
             overlays={overlays}
-            timeline={timeline}
-            expanded={expanded}
-            toggle={toggleExpanded}
-            allocate={allocateWork}
-            remove={removeWork}
-            deleteStoppage={deleteStoppage}
-            startDrag={startDrag}
-            moveToForecast={moveToForecast}
-            widths={widths}
-            setWidths={setWidths}
-            orders={orders}
-            setOrders={setOrders}
+            setOverlays={setOverlays}
           />
 
-          <ResourcesPanel
-            resourceSeries={resourceSeries}
-            timeline={timeline}
-            expandedResources={expandedResources}
-            setExpandedResources={setExpandedResources}
-          />
-        </main>
-      </div>
+          <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <ItemsPanel
+              rows={rows}
+              overlays={overlays}
+              timeline={timeline}
+              expanded={expanded}
+              toggle={toggleExpanded}
+              allocate={allocateWork}
+              remove={removeWork}
+              deleteStoppage={deleteStoppage}
+              startDrag={startDrag}
+              moveToForecast={moveToForecast}
+              widths={widths}
+              setWidths={setWidths}
+              orders={orders}
+              setOrders={setOrders}
+            />
+
+            <ResourcesPanel
+              resourceSeries={resourceSeries}
+              timeline={timeline}
+              expandedResources={expandedResources}
+              setExpandedResources={setExpandedResources}
+            />
+          </main>
+        </div>
+      ) : (
+        <ResourceCapacityScreen
+          capacityIntervals={capacityIntervals}
+          setCapacityIntervals={setCapacityIntervals}
+        />
+      )}
     </div>
   );
 }
