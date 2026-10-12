@@ -14,12 +14,18 @@ import {
   sampleOrders,
 } from './data/sampleState';
 
+const TICK_COUNT = 10;
+const COLUMN_COUNT = TICK_COUNT - 1;
+
 const MINUTE = 60_000;
 const SNAP = 15 * MINUTE;
 const START = Date.parse('2026-06-29T06:00:00+08:00');
 const END = Date.parse('2026-07-03T18:00:00+08:00');
 const SPAN = END - START;
 const GANTT_WIDTH = 1080;
+
+const GRID_TEMPLATE_COLUMNS = { gridTemplateColumns: `repeat(${COLUMN_COUNT}, ${GANTT_WIDTH / COLUMN_COUNT}px)` };
+
 const SAP_ORDER_URL =
   'https://my301631.s4hana.ondemand.com/ui#MaintenanceOrder-change?MaintenanceOrder=';
 
@@ -754,11 +760,17 @@ function TimelineGrid() {
   return (
     <div
       className="pointer-events-none absolute inset-0 grid"
-      style={{ width: GANTT_WIDTH, gridTemplateColumns: 'repeat(10, 108px)' }}
+      style={{ width: GANTT_WIDTH, ...GRID_TEMPLATE_COLUMNS }}
     >
-      {ticks.map((tick) => (
-        <div key={tick.value} className="border-r border-slate-200" />
-      ))}
+      {Array.from(
+        { length: COLUMN_COUNT },
+        (_, index) => (
+          <div
+            key={index}
+            className="border-r border-slate-200"
+          />
+        )
+      )}
     </div>
   );
 }
@@ -767,21 +779,34 @@ function TimelineHeader({ scrollLeft }) {
   return (
     <div className="h-8 overflow-hidden bg-white">
       <div
-        className="grid h-8"
+        className="relative h-8"
         style={{
           width: GANTT_WIDTH,
           transform: `translateX(-${scrollLeft}px)`,
-          gridTemplateColumns: 'repeat(10, 108px)',
         }}
       >
-        {ticks.map((tick) => (
-          <div
-            key={tick.value}
-            className="border-r border-slate-200 px-1 py-2 text-[10px]"
-          >
-            {tick.label}
-          </div>
-        ))}
+        {ticks.map((tick, index) => {
+          const isFirst = index === 0;
+          const isLast =
+            index === ticks.length - 1;
+
+          return (
+            <div
+              key={tick.value}
+              className="absolute top-0 flex h-8 items-center whitespace-nowrap text-[10px]"
+              style={{
+                left: leftAt(tick.value),
+                transform: isFirst
+                  ? 'translateX(4px)'
+                  : isLast
+                    ? 'translateX(calc(-100% - 4px))'
+                    : 'translateX(-50%)',
+              }}
+            >
+              {tick.label}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
