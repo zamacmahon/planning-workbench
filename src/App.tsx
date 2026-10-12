@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { SAP_ORDER_URL } from './data/misc';
 import { workItems } from './data/workItems';
 import { resourceDefinitions } from './data/resources';
 import { assets } from './data/assets';
@@ -14,20 +15,71 @@ import {
   sampleOrders,
 } from './data/sampleState';
 
-const TICK_COUNT = 10;
-const COLUMN_COUNT = TICK_COUNT - 1;
-
 const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 const SNAP = 15 * MINUTE;
-const START = Date.parse('2026-06-29T06:00:00+08:00');
-const END = Date.parse('2026-07-03T18:00:00+08:00');
-const SPAN = END - START;
-const GANTT_WIDTH = 1080;
+const DEFAULT_TIMELINE_START = Date.parse('2026-06-29T06:00:00+08:00');
+const DEFAULT_TIMELINE_END = Date.parse('2026-07-03T18:00:00+08:00');
 
-const GRID_TEMPLATE_COLUMNS = { gridTemplateColumns: `repeat(${COLUMN_COUNT}, ${GANTT_WIDTH / COLUMN_COUNT}px)` };
+const TIMELINE_CONFIG = {
+  edgeThresholdViewportFraction: 0.25,
 
-const SAP_ORDER_URL =
-  'https://my301631.s4hana.ondemand.com/ui#MaintenanceOrder-change?MaintenanceOrder=';
+  zoomLevels: [
+    {
+      pixelsPerHour: 3,
+      label: 'Month',
+      tickHours: 24,
+      bufferIntervals: 7,
+    },
+    {
+      pixelsPerHour: 6,
+      label: 'Fortnight',
+      tickHours: 12,
+      bufferIntervals: 2,
+    },
+    {
+      pixelsPerHour: 10,
+      label: 'Week',
+      tickHours: 12,
+      bufferIntervals: 2,
+      default: true,
+    },
+    {
+      pixelsPerHour: 18,
+      label: 'Shift',
+      tickHours: 6,
+      bufferIntervals: 1,
+    },
+    {
+      pixelsPerHour: 36,
+      label: 'Detailed',
+      tickHours: 3,
+      bufferIntervals: 1,
+    },
+  ],
+};
+
+const DEFAULT_TIMELINE_ZOOM =
+  TIMELINE_CONFIG.zoomLevels.find(
+    (level) => level.default
+  ) ??
+  TIMELINE_CONFIG.zoomLevels[0];
+
+function getZoomLevel(
+  pixelsPerHour
+) {
+  return (
+    TIMELINE_CONFIG.zoomLevels
+      .slice()
+      .reverse()
+      .find(
+        (level) =>
+          pixelsPerHour >=
+          level.pixelsPerHour
+      ) ??
+    TIMELINE_CONFIG.zoomLevels[0]
+  );
+}
 
 const PRIORITIES = {
   1: { label: 'Very High', colour: '#dc2626', symbol: '⬟' },
@@ -45,8 +97,6 @@ const AVAILABILITIES = {
 const clamp = (value, lower, upper) => Math.max(lower, Math.min(upper, value));
 const snapDateTime = (value) => Math.round(value / SNAP) * SNAP;
 const snapDuration = (value) => Math.round(value / SNAP) * SNAP;
-const leftAt = (value) => `${((value - START) / SPAN) * 100}%`;
-const widthFor = (value) => `${(value / SPAN) * 100}%`;
 
 const shortFormatter = new Intl.DateTimeFormat('en-AU', {
   timeZone: 'Australia/Perth',
@@ -106,6 +156,35 @@ const formatDateInput = (value) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatDateTimeInput = (value) => {
+  const parts = new Intl.DateTimeFormat(
+    'en-CA',
+    {
+      timeZone: 'Australia/Perth',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }
+  ).formatToParts(new Date(value));
+
+  const getPart = (type) =>
+    parts.find(
+      (part) => part.type === type
+    )?.value ?? '';
+
+  return `${getPart('year')}-${getPart(
+    'month'
+  )}-${getPart('day')}T${getPart(
+    'hour'
+  )}:${getPart('minute')}`;
+};
+
+const parseDateTimeInput = (value) =>
+  Date.parse(`${value}:00+08:00`);
+
 const formatDateTime = (value) =>
   value == null ? '' : shortFormatter.format(new Date(value)).replace(',', '');
 const formatFullDateTime = (value) =>
@@ -123,11 +202,6 @@ const formatPriority = (priority) =>
     ? ''
     : `${priority} ${PRIORITIES[priority]?.label ?? ''}`.trim();
 
-const ticks = Array.from({ length: 10 }, (_, index) => {
-  const value = START + index * 12 * 60 * MINUTE;
-  return { value, label: formatDateTime(value) };
-});
-
 function parseResourceDemand(value) {
   if (!value) return [];
   return value
@@ -142,7 +216,9 @@ function parseResourceDemand(value) {
 
 function calculateResourceSeries(
   items,
-  capacityIntervals = []
+  capacityIntervals = [],
+  rangeStartMs = DEFAULT_TIMELINE_START,
+  rangeEndMs = DEFAULT_TIMELINE_END
 ) {
   const allocatedTimed = items.filter(
     (item) =>
@@ -156,41 +232,53 @@ function calculateResourceSeries(
       capacityIntervals.filter(
         (interval) =>
           interval.resourceCode === resource.code &&
-          interval.endMs > START &&
-          interval.startMs < END
+          interval.endMs > rangeStartMs &&
+          interval.startMs < rangeEndMs
       );
 
     const demandBoundaries =
       allocatedTimed.flatMap((item) => [
-        clamp(item.startMs, START, END),
+        clamp(
+          item.startMs,
+          rangeStartMs,
+          rangeEndMs
+        ),
         clamp(
           item.startMs +
           item.durationMinutes * MINUTE,
-          START,
-          END
+          rangeStartMs,
+          rangeEndMs
         ),
       ]);
 
     const capacityBoundaries =
       resourceCapacityIntervals.flatMap(
         (interval) => [
-          clamp(interval.startMs, START, END),
-          clamp(interval.endMs, START, END),
+          clamp(
+            interval.startMs,
+            rangeStartMs,
+            rangeEndMs
+          ),
+          clamp(
+            interval.endMs,
+            rangeStartMs,
+            rangeEndMs
+          ),
         ]
       );
 
     const markers = [
       ...new Set([
-        START,
-        END,
+        rangeStartMs,
+        rangeEndMs,
         ...demandBoundaries,
         ...capacityBoundaries,
       ]),
     ]
       .filter(
         (value) =>
-          value >= START &&
-          value <= END
+          value >= rangeStartMs &&
+          value <= rangeEndMs
       )
       .sort((a, b) => a - b);
 
@@ -244,18 +332,14 @@ function calculateResourceSeries(
         return {
           startMs,
           endMs,
-
           count: contributors.reduce(
             (sum, contributor) =>
               sum + contributor.count,
             0
           ),
-
           capacity:
             capacityInterval?.capacity ?? 0,
-
           hasCapacityData,
-
           contributors,
         };
       })
@@ -290,7 +374,14 @@ function ordered(items, order) {
   );
 }
 
-function deriveRows(items, stoppages, expanded, orders) {
+function deriveRows(
+  items,
+  stoppages,
+  expanded,
+  orders,
+  rangeStartMs,
+  rangeEndMs
+) {
   const rows = [];
 
   for (const assetDefinition of assets) {
@@ -411,8 +502,8 @@ function deriveRows(items, stoppages, expanded, orders) {
         (item) =>
           item.isStoppageReason &&
           item.forecastMs != null &&
-          item.forecastMs >= START &&
-          item.forecastMs <= END
+          item.forecastMs >= rangeStartMs &&
+          item.forecastMs <= rangeEndMs
       )
       .map((item) => ({
         id: item.id,
@@ -534,8 +625,8 @@ function deriveRows(items, stoppages, expanded, orders) {
             (item) =>
               item.isStoppageReason &&
               item.forecastMs != null &&
-              item.forecastMs >= START &&
-              item.forecastMs <= END
+              item.forecastMs >= rangeStartMs &&
+              item.forecastMs <= rangeEndMs
           )
           .map((item) => ({
             id: item.id,
@@ -648,30 +739,170 @@ function deriveRows(items, stoppages, expanded, orders) {
   return rows;
 }
 
-function useTimelineScroll() {
+function useTimelineScroll({
+  timelineRange,
+  setTimelineRange,
+}) {
   const itemsRef = React.useRef(null);
   const resourcesRef = React.useRef(null);
   const lockRef = React.useRef(false);
-  const [scrollLeft, setScrollLeft] = React.useState(0);
+  const extendingRef = React.useRef(false);
+  const pendingPrependPixelsRef =
+    React.useRef(0);
+
+  const [scrollLeft, setScrollLeft] =
+    React.useState(0);
+
+  const previousStartRef = React.useRef(
+    timelineRange.startMs
+  );
+
+  const zoomLevel =
+    getZoomLevel(
+      timelineRange.pixelsPerHour
+    );
+
+  const BUFFER_DURATION_MS =
+    zoomLevel.bufferIntervals *
+    zoomLevel.tickHours *
+    HOUR;
+
+  React.useLayoutEffect(() => {
+    const startChanged =
+      previousStartRef.current !==
+      timelineRange.startMs;
+
+    previousStartRef.current =
+      timelineRange.startMs;
+
+    if (
+      !startChanged ||
+      pendingPrependPixelsRef.current === 0
+    ) {
+      extendingRef.current = false;
+      return;
+    }
+
+    const addedPixels =
+      pendingPrependPixelsRef.current;
+
+    pendingPrependPixelsRef.current = 0;
+
+    if (itemsRef.current) {
+      itemsRef.current.scrollLeft +=
+        addedPixels;
+
+      setScrollLeft(
+        itemsRef.current.scrollLeft
+      );
+    }
+
+    if (resourcesRef.current) {
+      resourcesRef.current.scrollLeft +=
+        addedPixels;
+    }
+
+    extendingRef.current = false;
+  }, [
+    timelineRange.startMs,
+    timelineRange.endMs,
+  ]);
+
+  const extendIfRequired = (source) => {
+    if (
+      extendingRef.current ||
+      !source.current
+    ) {
+      return;
+    }
+
+    const element = source.current;
+
+    const edgeThreshold =
+      element.clientWidth *
+      TIMELINE_CONFIG.edgeThresholdViewportFraction;
+
+    const nearStart =
+      element.scrollLeft <
+      edgeThreshold;
+
+    const nearEnd =
+      element.scrollWidth -
+      element.clientWidth -
+      element.scrollLeft <
+      edgeThreshold;
+
+    if (nearStart) {
+      extendingRef.current = true;
+
+      const addedPixels =
+        (BUFFER_DURATION_MS / HOUR) *
+        timelineRange.pixelsPerHour;
+
+      pendingPrependPixelsRef.current =
+        addedPixels;
+
+      setTimelineRange((current) => ({
+        ...current,
+        startMs:
+          current.startMs -
+          BUFFER_DURATION_MS,
+      }));
+
+      return;
+    }
+
+    if (nearEnd) {
+      extendingRef.current = true;
+
+      setTimelineRange((current) => ({
+        ...current,
+        endMs:
+          current.endMs +
+          BUFFER_DURATION_MS,
+      }));
+
+      requestAnimationFrame(() => {
+        extendingRef.current = false;
+      });
+    }
+  };
 
   const sync = (source, target) => {
-    if (!source.current) return;
-    const next = source.current.scrollLeft;
+    if (!source.current) {
+      return;
+    }
+
+    const next =
+      source.current.scrollLeft;
+
     setScrollLeft(next);
-    if (lockRef.current || !target.current) return;
-    lockRef.current = true;
-    target.current.scrollLeft = next;
-    requestAnimationFrame(() => {
-      lockRef.current = false;
-    });
+
+    if (
+      !lockRef.current &&
+      target.current
+    ) {
+      lockRef.current = true;
+      target.current.scrollLeft = next;
+
+      requestAnimationFrame(() => {
+        lockRef.current = false;
+      });
+    }
+
+    extendIfRequired(source);
   };
 
   return {
     itemsRef,
     resourcesRef,
     scrollLeft,
-    onItemsScroll: () => sync(itemsRef, resourcesRef),
-    onResourcesScroll: () => sync(resourcesRef, itemsRef),
+
+    onItemsScroll: () =>
+      sync(itemsRef, resourcesRef),
+
+    onResourcesScroll: () =>
+      sync(resourcesRef, itemsRef),
   };
 }
 
@@ -756,32 +987,61 @@ function Config({ overlays, setOverlays }) {
   );
 }
 
+const TimelineGeometryContext =
+  React.createContext(null);
+
+function useTimelineGeometry() {
+  const geometry = React.useContext(
+    TimelineGeometryContext
+  );
+
+  if (!geometry) {
+    throw new Error(
+      'Timeline geometry is unavailable.'
+    );
+  }
+
+  return geometry;
+}
+
 function TimelineGrid() {
+  const {
+    ticks,
+    width,
+    leftAt,
+  } = useTimelineGeometry();
+
   return (
     <div
-      className="pointer-events-none absolute inset-0 grid"
-      style={{ width: GANTT_WIDTH, ...GRID_TEMPLATE_COLUMNS }}
+      className="pointer-events-none absolute inset-0"
+      style={{ width }}
     >
-      {Array.from(
-        { length: COLUMN_COUNT },
-        (_, index) => (
-          <div
-            key={index}
-            className="border-r border-slate-200"
-          />
-        )
-      )}
+      {ticks.map((tick) => (
+        <div
+          key={tick.value}
+          className="absolute inset-y-0 border-l border-slate-200"
+          style={{
+            left: leftAt(tick.value),
+          }}
+        />
+      ))}
     </div>
   );
 }
 
 function TimelineHeader({ scrollLeft }) {
+  const {
+    ticks,
+    width,
+    leftAt,
+  } = useTimelineGeometry();
+
   return (
     <div className="h-8 overflow-hidden bg-white">
       <div
         className="relative h-8"
         style={{
-          width: GANTT_WIDTH,
+          width,
           transform: `translateX(-${scrollLeft}px)`,
         }}
       >
@@ -814,7 +1074,7 @@ function TimelineHeader({ scrollLeft }) {
 
 function WorkOrderLink({ item, children, className = '' }) {
   if (!item.workOrderId) return children;
-  const url = `${SAP_ORDER_URL}${encodeURIComponent(item.workOrderId)} `;
+  const url = `${SAP_ORDER_URL}${encodeURIComponent(item.workOrderId)}`;
 
   return (
     <a
@@ -822,7 +1082,7 @@ function WorkOrderLink({ item, children, className = '' }) {
       target="_blank"
       rel="noopener noreferrer"
       title={url}
-      className={`text - sky - 700 underline underline - offset - 2 hover: text - sky - 900 ${className} `}
+      className={`text-sky-700 underline underline-offset-2 hover:text-sky-900 ${className}`}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -993,6 +1253,11 @@ function BarAnnotation({
   durationMs,
   overlays,
 }) {
+  const {
+    leftAt,
+    widthFor,
+  } = useTimelineGeometry();
+
   if (
     row.startMs == null ||
     durationMs == null
@@ -1130,6 +1395,12 @@ function GanttRow({
   startDrag,
   moveToForecast,
 }) {
+  const {
+    width,
+    leftAt,
+    widthFor,
+  } = useTimelineGeometry();
+
   const height =
     row.type === 'unallocatedHeader'
       ? 'h-8'
@@ -1167,7 +1438,7 @@ function GanttRow({
   return (
     <div
       className={`relative ${height} border-b border-slate-200 bg-white`}
-      style={{ width: GANTT_WIDTH }}
+      style={{ width }}
     >
       <TimelineGrid />
 
@@ -1434,6 +1705,170 @@ function GanttRow({
   );
 }
 
+function TimelineControls({
+  timelineRange,
+  setTimelineRange,
+  timeline,
+}) {
+  const setStart = (value) => {
+    const startMs =
+      parseDateTimeInput(value);
+
+    if (
+      !Number.isFinite(startMs) ||
+      startMs >= timelineRange.endMs
+    ) {
+      return;
+    }
+
+    setTimelineRange((current) => ({
+      ...current,
+      startMs,
+    }));
+  };
+
+  const setEnd = (value) => {
+    const endMs =
+      parseDateTimeInput(value);
+
+    if (
+      !Number.isFinite(endMs) ||
+      endMs <= timelineRange.startMs
+    ) {
+      return;
+    }
+
+    setTimelineRange((current) => ({
+      ...current,
+      endMs,
+    }));
+  };
+
+  const changeZoom = (value) => {
+    const pixelsPerHour = Number(value);
+
+    const scroller =
+      timeline.itemsRef.current;
+
+    if (!scroller) {
+      setTimelineRange((current) => ({
+        ...current,
+        pixelsPerHour,
+      }));
+
+      return;
+    }
+
+    const centreTime =
+      timelineRange.startMs +
+      ((scroller.scrollLeft +
+        scroller.clientWidth / 2) /
+        timelineRange.pixelsPerHour) *
+        HOUR;
+
+    setTimelineRange((current) => ({
+      ...current,
+      pixelsPerHour,
+    }));
+
+    requestAnimationFrame(() => {
+      const nextScroller =
+        timeline.itemsRef.current;
+
+      if (!nextScroller) {
+        return;
+      }
+
+      const centrePixel =
+        ((centreTime -
+          timelineRange.startMs) /
+          HOUR) *
+        pixelsPerHour;
+
+      const nextScrollLeft =
+        centrePixel -
+        nextScroller.clientWidth / 2;
+
+      nextScroller.scrollLeft =
+        nextScrollLeft;
+
+      if (timeline.resourcesRef.current) {
+        timeline.resourcesRef.current.scrollLeft =
+          nextScrollLeft;
+      }
+    });
+  };
+
+  const zoomLevel =
+    getZoomLevel(
+      timelineRange.pixelsPerHour
+    );
+
+  return (
+    <div className="flex min-h-16 flex-wrap items-end gap-3 border-b border-slate-300 bg-slate-50 px-3 py-2">
+      <label className="grid gap-1 text-[11px]">
+        <span>Timeline start</span>
+
+        <input
+          type="datetime-local"
+          className="h-8 w-48 border border-slate-300 bg-white px-2 text-xs"
+          value={formatDateTimeInput(
+            timelineRange.startMs
+          )}
+          onChange={(event) =>
+            setStart(event.target.value)
+          }
+        />
+      </label>
+
+      <label className="grid gap-1 text-[11px]">
+        <span>Timeline end</span>
+
+        <input
+          type="datetime-local"
+          className="h-8 w-48 border border-slate-300 bg-white px-2 text-xs"
+          value={formatDateTimeInput(
+            timelineRange.endMs
+          )}
+          onChange={(event) =>
+            setEnd(event.target.value)
+          }
+        />
+      </label>
+
+      <label className="grid gap-1 text-[11px]">
+  <span>
+    Scale
+    <span className="ml-1 text-slate-400">
+      ({zoomLevel.tickHours}h)
+    </span>
+  </span>
+
+  <select
+    className="h-8 w-32 border border-slate-300 bg-white px-2 text-xs"
+    value={
+      timelineRange.pixelsPerHour
+    }
+    onChange={(event) =>
+      changeZoom(event.target.value)
+    }
+  >
+    {TIMELINE_CONFIG.zoomLevels.map(
+      (level) => (
+        <option
+          key={level.pixelsPerHour}
+          value={level.pixelsPerHour}
+        >
+          {level.label}
+        </option>
+      )
+    )}
+  </select>
+</label>
+    </div>
+  );
+}
+
 function ItemsPanel({
   rows,
   overlays,
@@ -1450,6 +1885,8 @@ function ItemsPanel({
   orders,
   setOrders,
 }) {
+  const { width } =
+    useTimelineGeometry();
   const template = widths.map((width) => `${width}px`).join(' ');
   const contentWidth = widths.reduce(
     (sum, width) => sum + width,
@@ -1636,7 +2073,7 @@ function ItemsPanel({
               onScroll={timeline.onItemsScroll}
               className="overflow-x-auto overflow-y-hidden"
             >
-              <div style={{ width: GANTT_WIDTH }}>
+              <div style={{ width }}>
                 {rows.map((row) => (
                   <GanttRow
                     key={`gantt-${row.rowKey}`}
@@ -1713,6 +2150,12 @@ function ResourceGraph({
   resource,
   expanded,
 }) {
+  const {
+    width,
+    leftAt,
+    widthFor,
+  } = useTimelineGeometry();
+
   const maxLevel = Math.max(
     1,
     ...resource.intervals.flatMap(
@@ -1727,7 +2170,7 @@ function ResourceGraph({
     <div
       className={`relative ${expanded ? 'h-24' : 'h-8'
         } border-b border-slate-200 bg-white`}
-      style={{ width: GANTT_WIDTH }}
+      style={{ width }}
     >
       <TimelineGrid />
 
@@ -1882,6 +2325,9 @@ function ResourcesPanel({
   expandedResources,
   setExpandedResources,
 }) {
+  const { width } =
+    useTimelineGeometry();
+
   const [open, setOpen] = React.useState(true);
 
   const toggle = (code) => {
@@ -1925,7 +2371,7 @@ function ResourcesPanel({
                 onScroll={timeline.onResourcesScroll}
                 className="overflow-x-auto overflow-y-hidden"
               >
-                <div style={{ width: GANTT_WIDTH }}>
+                <div style={{ width }}>
                   {resourceSeries.map((resource) => (
                     <ResourceGraph
                       key={resource.code}
@@ -1948,10 +2394,10 @@ function ResourceCapacityScreen({
   setCapacityIntervals,
 }) {
   const [startDate, setStartDate] =
-    React.useState(() => formatDateInput(START));
+    React.useState(() => formatDateInput(DEFAULT_TIMELINE_START));
 
   const [endDate, setEndDate] =
-    React.useState(() => formatDateInput(END));
+    React.useState(() => formatDateInput(DEFAULT_TIMELINE_END));
 
   const [shiftPreset, setShiftPreset] =
     React.useState('06:00/18:00');
@@ -2785,10 +3231,83 @@ function ResourceCapacityScreen({
   );
 }
 
-export default function PlanningGridFixedAnnotationsV10() {
+export default function PlanningGrid() {
   const [screen, setScreen] = React.useState<
     'planning' | 'resourceCapacity'
   >('planning');
+  const [timelineRange, setTimelineRange] =
+  React.useState({
+    startMs: DEFAULT_TIMELINE_START,
+    endMs: DEFAULT_TIMELINE_END,
+    pixelsPerHour:
+      DEFAULT_TIMELINE_ZOOM.pixelsPerHour,
+  });
+  const timelineGeometry = React.useMemo(() => {
+    const spanMs =
+      timelineRange.endMs -
+      timelineRange.startMs;
+
+    const width =
+      (spanMs / HOUR) *
+      timelineRange.pixelsPerHour;
+
+    const leftAt = (value) =>
+      `${((value - timelineRange.startMs) /
+        HOUR) *
+      timelineRange.pixelsPerHour
+      }px`;
+
+    const widthFor = (durationMs) =>
+      `${(durationMs / HOUR) *
+      timelineRange.pixelsPerHour
+      }px`;
+
+    const zoomLevel =
+      TIMELINE_CONFIG.zoomLevels
+        .slice()
+        .reverse()
+        .find(
+          (level) =>
+            timelineRange.pixelsPerHour >=
+            level.pixelsPerHour
+        ) ??
+      TIMELINE_CONFIG.zoomLevels[0];
+
+    const tickHours =
+      zoomLevel.tickHours;
+
+    const tickMs = tickHours * HOUR;
+
+    const firstTickMs =
+      timelineRange.startMs;
+
+      const ticks = [];
+
+      for (
+        let value = firstTickMs;
+        value <= timelineRange.endMs;
+        value += tickMs
+      ) {
+        ticks.push({
+          value,
+          label: formatDateTime(value),
+        });
+      }
+
+    return {
+      startMs: timelineRange.startMs,
+      endMs: timelineRange.endMs,
+      spanMs,
+      width,
+      pixelsPerHour:
+        timelineRange.pixelsPerHour,
+      tickHours,
+      tickMs,
+      ticks,
+      leftAt,
+      widthFor,
+    };
+  }, [timelineRange]);
   const [overlays, setOverlays] = React.useState({
     forecasts: true,
     resources: true,
@@ -2812,16 +3331,27 @@ export default function PlanningGridFixedAnnotationsV10() {
     setCapacityIntervals,
   ] = React.useState(resourceCapacity);
 
-  const timeline = useTimelineScroll();
+  const timeline = useTimelineScroll({
+    timelineRange,
+    setTimelineRange,
+  });
   const items = applyState(allocation, schedule);
   const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
   const rows = deriveRows(
     items,
     stoppages,
     expanded,
-    orders
+    orders,
+    timelineGeometry.startMs,
+    timelineGeometry.endMs
   );
-  const resourceSeries = calculateResourceSeries(items, capacityIntervals);
+  const resourceSeries =
+    calculateResourceSeries(
+      items,
+      capacityIntervals,
+      timelineGeometry.startMs,
+      timelineGeometry.endMs
+    );
 
   const setManyStarts = (updates) => {
     setSchedule((current) => {
@@ -2830,17 +3360,16 @@ export default function PlanningGridFixedAnnotationsV10() {
       for (const update of updates) {
         const item = itemById[update.id];
 
-        if (!item || item.durationMinutes == null) {
+        if (
+          !item ||
+          item.durationMinutes == null
+        ) {
           continue;
         }
 
-        const durationMs = item.durationMinutes * MINUTE;
-
         next[update.id] = {
-          startMs: clamp(
-            snapDateTime(update.startMs),
-            START,
-            END - durationMs
+          startMs: snapDateTime(
+            update.startMs
           ),
         };
       }
@@ -2901,7 +3430,8 @@ export default function PlanningGridFixedAnnotationsV10() {
       row.type === 'stoppage'
         ? items.filter(
           (item) =>
-            item.allocatedStoppageId === row.id &&
+            item.allocatedStoppageId ===
+            row.id &&
             item.startMs != null &&
             item.durationMinutes != null
         )
@@ -2915,27 +3445,58 @@ export default function PlanningGridFixedAnnotationsV10() {
     );
 
     const move = (moveEvent) => {
-      const delta = snapDuration(
-        ((moveEvent.clientX - originX) / GANTT_WIDTH) * SPAN
-      );
+      const pixelDelta =
+        moveEvent.clientX - originX;
+
+      const timeDelta =
+        (pixelDelta /
+          timelineGeometry.pixelsPerHour) *
+        HOUR;
+
+      const snappedDelta =
+        snapDuration(timeDelta);
 
       setManyStarts(
         members.map((item) => ({
           id: item.id,
-          startMs: origins[item.id] + delta,
+          startMs:
+            origins[item.id] +
+            snappedDelta,
         }))
       );
     };
 
     const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
+      window.removeEventListener(
+        'pointermove',
+        move
+      );
+
+      window.removeEventListener(
+        'pointerup',
+        up
+      );
+
+      window.removeEventListener(
+        'pointercancel',
+        up
+      );
     };
 
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    window.addEventListener(
+      'pointermove',
+      move
+    );
+
+    window.addEventListener(
+      'pointerup',
+      up
+    );
+
+    window.addEventListener(
+      'pointercancel',
+      up
+    );
   };
 
   const toggleExpanded = (id) => {
@@ -3074,38 +3635,47 @@ export default function PlanningGridFixedAnnotationsV10() {
       </header>
 
       {screen === 'planning' ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[180px_minmax(0,1fr)]">
-          <Config
-            overlays={overlays}
-            setOverlays={setOverlays}
-          />
-
-          <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <ItemsPanel
-              rows={rows}
+        <TimelineGeometryContext.Provider
+          value={timelineGeometry}
+        >
+          <div className="grid min-h-0 flex-1 grid-cols-[180px_minmax(0,1fr)]">
+            <Config
               overlays={overlays}
-              timeline={timeline}
-              expanded={expanded}
-              toggle={toggleExpanded}
-              allocate={allocateWork}
-              remove={removeWork}
-              deleteStoppage={deleteStoppage}
-              startDrag={startDrag}
-              moveToForecast={moveToForecast}
-              widths={widths}
-              setWidths={setWidths}
-              orders={orders}
-              setOrders={setOrders}
+              setOverlays={setOverlays}
             />
 
-            <ResourcesPanel
-              resourceSeries={resourceSeries}
-              timeline={timeline}
-              expandedResources={expandedResources}
-              setExpandedResources={setExpandedResources}
-            />
-          </main>
-        </div>
+            <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+              <TimelineControls
+                timelineRange={timelineRange}
+                setTimelineRange={setTimelineRange}
+                timeline={timeline}
+              />
+              <ItemsPanel
+                rows={rows}
+                overlays={overlays}
+                timeline={timeline}
+                expanded={expanded}
+                toggle={toggleExpanded}
+                allocate={allocateWork}
+                remove={removeWork}
+                deleteStoppage={deleteStoppage}
+                startDrag={startDrag}
+                moveToForecast={moveToForecast}
+                widths={widths}
+                setWidths={setWidths}
+                orders={orders}
+                setOrders={setOrders}
+              />
+
+              <ResourcesPanel
+                resourceSeries={resourceSeries}
+                timeline={timeline}
+                expandedResources={expandedResources}
+                setExpandedResources={setExpandedResources}
+              />
+            </main>
+          </div>
+        </TimelineGeometryContext.Provider>
       ) : (
         <ResourceCapacityScreen
           capacityIntervals={capacityIntervals}
