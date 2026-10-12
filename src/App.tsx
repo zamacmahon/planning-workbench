@@ -159,7 +159,7 @@ function calculateResourceSeries(
         clamp(item.startMs, START, END),
         clamp(
           item.startMs +
-            item.durationMinutes * MINUTE,
+          item.durationMinutes * MINUTE,
           START,
           END
         ),
@@ -216,11 +216,11 @@ function calculateResourceSeries(
 
             return demand
               ? [
-                  {
-                    id: item.id,
-                    count: demand.count,
-                  },
-                ]
+                {
+                  id: item.id,
+                  count: demand.count,
+                },
+              ]
               : [];
           });
 
@@ -1657,9 +1657,8 @@ function ResourceDescription({
 
   return (
     <div
-      className={`${
-        expanded ? 'h-24' : 'h-8'
-      } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
+      className={`${expanded ? 'h-24' : 'h-8'
+        } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
     >
       <button
         onClick={() => toggle(resource.code)}
@@ -1701,9 +1700,8 @@ function ResourceGraph({
 
   return (
     <div
-      className={`relative ${
-        expanded ? 'h-24' : 'h-8'
-      } border-b border-slate-200 bg-white`}
+      className={`relative ${expanded ? 'h-24' : 'h-8'
+        } border-b border-slate-200 bg-white`}
       style={{ width: GANTT_WIDTH }}
     >
       <TimelineGrid />
@@ -1718,7 +1716,7 @@ function ResourceGraph({
             Math.max(
               0,
               interval.count -
-                interval.capacity
+              interval.capacity
             );
 
           const missingCapacity =
@@ -1740,11 +1738,11 @@ function ResourceGraph({
               : null,
             interval.contributors.length > 0
               ? `Orders: ${interval.contributors
-                  .map(
-                    (contributor) =>
-                      contributor.id
-                  )
-                  .join(', ')}`
+                .map(
+                  (contributor) =>
+                    contributor.id
+                )
+                .join(', ')}`
               : 'Orders: none',
           ]
             .filter(Boolean)
@@ -1758,21 +1756,21 @@ function ResourceGraph({
             interval.count === 0
               ? 0
               : Math.max(
-                  3,
-                  (interval.count /
-                    maxLevel) *
-                    76
-                );
+                3,
+                (interval.count /
+                  maxLevel) *
+                76
+              );
 
           const capacityHeight =
             interval.capacity === 0
               ? 0
               : Math.max(
-                  2,
-                  (interval.capacity /
-                    maxLevel) *
-                    76
-                );
+                2,
+                (interval.capacity /
+                  maxLevel) *
+                76
+              );
 
           return (
             <React.Fragment
@@ -1925,7 +1923,7 @@ function ResourceCapacityScreen({
   setCapacityIntervals,
 }) {
   const [startDate, setStartDate] =
-  React.useState(() => formatDateInput(START));
+    React.useState(() => formatDateInput(START));
 
   const [endDate, setEndDate] =
     React.useState(() => formatDateInput(END));
@@ -1947,6 +1945,9 @@ function ResourceCapacityScreen({
 
   const [selectedCapacityRows, setSelectedCapacityRows] =
     React.useState<string[]>([]);
+
+  const [generationError, setGenerationError] =
+    React.useState('');
 
   const applyPreset = (value) => {
     setShiftPreset(value);
@@ -1997,7 +1998,12 @@ function ResourceCapacityScreen({
   };
 
   const generateCapacity = () => {
+    setGenerationError('');
+
     if (!startDate || !endDate) {
+      setGenerationError(
+        'Enter a start date and end date.'
+      );
       return;
     }
 
@@ -2020,6 +2026,9 @@ function ResourceCapacityScreen({
     );
 
     if (lastDate < firstDate) {
+      setGenerationError(
+        'The end date must be on or after the start date.'
+      );
       return;
     }
 
@@ -2096,6 +2105,70 @@ function ResourceCapacityScreen({
           });
         }
       }
+    }
+
+    const overlap = generated
+      .map((generatedInterval) => {
+        const existingInterval =
+          capacityIntervals.find(
+            (candidate) => {
+              if (
+                candidate.resourceCode !==
+                generatedInterval.resourceCode
+              ) {
+                return false;
+              }
+
+              const identical =
+                candidate.startMs ===
+                generatedInterval.startMs &&
+                candidate.endMs ===
+                generatedInterval.endMs;
+
+              if (identical) {
+                return false;
+              }
+
+              return (
+                generatedInterval.startMs <
+                candidate.endMs &&
+                generatedInterval.endMs >
+                candidate.startMs
+              );
+            }
+          );
+
+        return existingInterval
+          ? {
+            generatedInterval,
+            existingInterval,
+          }
+          : null;
+      })
+      .find(Boolean);
+
+    if (overlap) {
+      setGenerationError(
+        [
+          `Capacity overlap detected for ${overlap.generatedInterval.resourceCode}.`,
+          '',
+          `Existing: ${formatFullDateTime(
+            overlap.existingInterval.startMs
+          )} → ${formatFullDateTime(
+            overlap.existingInterval.endMs
+          )}`,
+          '',
+          `New: ${formatFullDateTime(
+            overlap.generatedInterval.startMs
+          )} → ${formatFullDateTime(
+            overlap.generatedInterval.endMs
+          )}`,
+          '',
+          'Delete or edit the existing capacity before generating this pattern.',
+        ].join('\n')
+      );
+
+      return;
     }
 
     setCapacityIntervals((current) => {
@@ -2483,6 +2556,12 @@ function ResourceCapacityScreen({
           >
             Generate Capacity
           </button>
+
+          {generationError && (
+            <div className="mt-3 whitespace-pre-line border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+              {generationError}
+            </div>
+          )}
 
           {capacityIntervals.length > 0 && (
             <span className="text-xs text-slate-600">
