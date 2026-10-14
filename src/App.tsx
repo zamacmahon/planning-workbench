@@ -89,6 +89,8 @@ const DEFAULT_COLUMNS = [
 const COMPACT_WIDTH = 75;
 const COMPACT_LABEL_WIDTH = 60;
 
+const DEFAULT_TABLE_PANE_WIDTH = 630;
+
 const TIMELINE_CONFIG = {
   edgeThresholdViewportFraction: 0.25,
 
@@ -265,10 +267,6 @@ const formatDuration = (minutes) => {
   if (hours) return `${hours}hrs`;
   return `${remainder}m`;
 };
-const formatPriority = (priority) =>
-  priority == null
-    ? ''
-    : `${priority} ${PRIORITIES[priority]?.label ?? ''}`.trim();
 
 function parseResourceDemand(value) {
   if (!value) return [];
@@ -2549,6 +2547,106 @@ function TimelineControls({
   );
 }
 
+function PaneResizeHandle({
+  tablePaneWidth,
+  setTablePaneWidth,
+}) {
+  const startResize = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const container =
+      event.currentTarget.parentElement;
+
+    if (!container) {
+      return;
+    }
+
+    const originX =
+      event.clientX;
+
+    const originWidth =
+      tablePaneWidth;
+
+    const minimumTableWidth = 200;
+    const minimumTimelineWidth = 200;
+
+    const move = (moveEvent) => {
+      const maximumTableWidth =
+        Math.max(
+          minimumTableWidth,
+          container.clientWidth -
+          minimumTimelineWidth
+        );
+
+      setTablePaneWidth(
+        clamp(
+          originWidth +
+          moveEvent.clientX -
+          originX,
+          minimumTableWidth,
+          maximumTableWidth
+        )
+      );
+    };
+
+    const finish = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      window.removeEventListener(
+        'pointermove',
+        move
+      );
+      window.removeEventListener(
+        'pointerup',
+        finish
+      );
+      window.removeEventListener(
+        'pointercancel',
+        finish
+      );
+    };
+
+    document.body.style.cursor =
+      'col-resize';
+    document.body.style.userSelect =
+      'none';
+
+    window.addEventListener(
+      'pointermove',
+      move
+    );
+    window.addEventListener(
+      'pointerup',
+      finish
+    );
+    window.addEventListener(
+      'pointercancel',
+      finish
+    );
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-label="Resize table and Gantt panes"
+      aria-orientation="vertical"
+      aria-valuemin={200}
+      aria-valuenow={Math.round(
+        tablePaneWidth
+      )}
+      className="group absolute bottom-0 top-0 z-50 w-2 -translate-x-1/2 cursor-col-resize touch-none"
+      style={{
+        left: tablePaneWidth,
+      }}
+      onPointerDown={startResize}
+    >
+      <div className="mx-auto h-full w-px bg-slate-300 group-hover:w-0.5 group-hover:bg-blue-500" />
+    </div>
+  );
+}
+
 function ItemsPanel({
   rows,
   overlays,
@@ -2569,6 +2667,7 @@ function ItemsPanel({
   renameStoppage,
   setRowStart,
   setRowEnd,
+  tablePaneWidth,
 }) {
   const { width } =
     useTimelineGeometry();
@@ -2872,7 +2971,13 @@ function ItemsPanel({
 
   return (
     <section className="grid min-h-0 flex-1 grid-rows-[2rem_1rem_minmax(0,1fr)] border-b border-slate-300">
-      <div className="grid grid-cols-[630px_minmax(0,1fr)] border-b border-slate-300">
+      <div
+        className="grid border-b border-slate-300"
+        style={{
+          gridTemplateColumns:
+            `${tablePaneWidth}px minmax(0, 1fr)`,
+        }}
+      >
         <div className="overflow-hidden border-r">
           <div
             className="grid h-8 text-xs font-semibold"
@@ -2905,8 +3010,8 @@ function ItemsPanel({
                     key={column.key}
                     draggable
                     className={`relative overflow-hidden whitespace-nowrap border-r px-2 py-2 ${isDragging
-                        ? 'bg-sky-100 opacity-60'
-                        : 'cursor-grab'
+                      ? 'bg-sky-100 opacity-60'
+                      : 'cursor-grab'
                       }`}
                     onDragStart={(event) =>
                       startColumnDrag(
@@ -2967,7 +3072,13 @@ function ItemsPanel({
         />
       </div>
 
-      <div className="grid grid-cols-[630px_minmax(0,1fr)] border-b border-slate-300 bg-slate-50">
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns:
+            `${tablePaneWidth}px minmax(0, 1fr)`,
+        }}
+      >
         <div
           ref={tableScrollbarRef}
           className="h-4 overflow-x-auto overflow-y-hidden border-r"
@@ -3001,7 +3112,13 @@ function ItemsPanel({
       </div>
 
       <div className="min-h-0 overflow-x-hidden overflow-y-auto">
-        <div className="grid grid-cols-[630px_minmax(0,1fr)]">
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns:
+              `${tablePaneWidth}px minmax(0, 1fr)`,
+          }}
+        >
           <div
             ref={tableBodyRef}
             className="overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar\]:hidden"
@@ -3315,6 +3432,7 @@ function ResourcesPanel({
   timeline,
   expandedResources,
   setExpandedResources,
+  tablePaneWidth,
 }) {
   const { width } =
     useTimelineGeometry();
@@ -3332,7 +3450,12 @@ function ResourcesPanel({
     <section
       className={`grid ${open ? 'h-56' : 'h-8'} shrink-0 grid-rows-[2rem_1fr]`}
     >
-      <div className="grid grid-cols-[630px_minmax(0,1fr)] border-b border-slate-300">
+      <div
+        className="grid border-b border-slate-300"
+        style={{
+          gridTemplateColumns:
+            `${tablePaneWidth}px minmax(0, 1fr)`,
+        }}>
         <button
           className="border-r px-2 text-left text-xs font-semibold"
           onClick={() => setOpen(!open)}
@@ -3344,7 +3467,11 @@ function ResourcesPanel({
 
       {open && (
         <div className="min-h-0 overflow-y-auto overflow-x-hidden">
-          <div className="grid grid-cols-[630px_minmax(0,1fr)]">
+          <div className="grid"
+            style={{
+              gridTemplateColumns:
+                `${tablePaneWidth}px minmax(0, 1fr)`,
+            }}>
             <div className="border-r">
               {resourceSeries.map((resource) => (
                 <ResourceDescription
@@ -4344,6 +4471,12 @@ export default function PlanningGrid() {
         ...column,
       }))
     );
+  const [
+    tablePaneWidth,
+    setTablePaneWidth,
+  ] = React.useState(
+    DEFAULT_TABLE_PANE_WIDTH
+  );
   const [orders, setOrders] = React.useState(sampleOrders);
   const [
     capacityIntervals,
@@ -4758,40 +4891,68 @@ export default function PlanningGrid() {
                 setTimelineRange={setTimelineRange}
                 timeline={timeline}
               />
-              <ItemsPanel
-                rows={rows}
-                overlays={overlays}
-                timeline={timeline}
-                expanded={expanded}
-                toggle={toggleExpanded}
-                allocate={allocateWork}
-                remove={removeWork}
-                deleteStoppage={deleteStoppage}
-                startDrag={startDrag}
-                moveToForecast={moveToForecast}
-                columns={columns}
-                setColumns={setColumns}
-                orders={orders}
-                setOrders={setOrders}
-                editingStoppageId={
-                  editingStoppageId
-                }
-                setEditingStoppageId={
-                  setEditingStoppageId
-                }
-                renameStoppage={
-                  renameStoppage
-                }
-                setRowStart={setRowStart}
-                setRowEnd={setRowEnd}
-              />
 
-              <ResourcesPanel
-                resourceSeries={resourceSeries}
-                timeline={timeline}
-                expandedResources={expandedResources}
-                setExpandedResources={setExpandedResources}
-              />
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <PaneResizeHandle
+                  tablePaneWidth={
+                    tablePaneWidth
+                  }
+                  setTablePaneWidth={
+                    setTablePaneWidth
+                  }
+                />
+
+                <ItemsPanel
+                  rows={rows}
+                  overlays={overlays}
+                  timeline={timeline}
+                  expanded={expanded}
+                  toggle={toggleExpanded}
+                  allocate={allocateWork}
+                  remove={removeWork}
+                  deleteStoppage={
+                    deleteStoppage
+                  }
+                  startDrag={startDrag}
+                  moveToForecast={
+                    moveToForecast
+                  }
+                  columns={columns}
+                  setColumns={setColumns}
+                  orders={orders}
+                  setOrders={setOrders}
+                  editingStoppageId={
+                    editingStoppageId
+                  }
+                  setEditingStoppageId={
+                    setEditingStoppageId
+                  }
+                  renameStoppage={
+                    renameStoppage
+                  }
+                  setRowStart={setRowStart}
+                  setRowEnd={setRowEnd}
+                  tablePaneWidth={
+                    tablePaneWidth
+                  }
+                />
+
+                <ResourcesPanel
+                  resourceSeries={
+                    resourceSeries
+                  }
+                  timeline={timeline}
+                  expandedResources={
+                    expandedResources
+                  }
+                  setExpandedResources={
+                    setExpandedResources
+                  }
+                  tablePaneWidth={
+                    tablePaneWidth
+                  }
+                />
+              </div>
             </main>
           </div>
         </TimelineGeometryContext.Provider>
