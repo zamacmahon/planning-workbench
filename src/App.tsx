@@ -779,8 +779,10 @@ function useTimelineScroll({
   timelineRange,
   setTimelineRange,
 }) {
+  const headerRef = React.useRef(null);
   const itemsRef = React.useRef(null);
   const resourcesRef = React.useRef(null);
+
   const lockRef = React.useRef(false);
   const extendingRef = React.useRef(false);
   const pendingPrependPixelsRef =
@@ -803,6 +805,28 @@ function useTimelineScroll({
     zoomLevel.tickHours *
     HOUR;
 
+  const setAllScrollLeft = (
+    nextScrollLeft,
+    sourceRef = null
+  ) => {
+    const refs = [
+      headerRef,
+      itemsRef,
+      resourcesRef,
+    ];
+
+    for (const ref of refs) {
+      if (
+        ref !== sourceRef &&
+        ref.current &&
+        ref.current.scrollLeft !== nextScrollLeft
+      ) {
+        ref.current.scrollLeft =
+          nextScrollLeft;
+      }
+    }
+  };
+
   React.useLayoutEffect(() => {
     const startChanged =
       previousStartRef.current !==
@@ -824,19 +848,17 @@ function useTimelineScroll({
 
     pendingPrependPixelsRef.current = 0;
 
-    if (itemsRef.current) {
-      itemsRef.current.scrollLeft +=
-        addedPixels;
+    const currentScrollLeft =
+      headerRef.current?.scrollLeft ??
+      itemsRef.current?.scrollLeft ??
+      resourcesRef.current?.scrollLeft ??
+      0;
 
-      setScrollLeft(
-        itemsRef.current.scrollLeft
-      );
-    }
+    const nextScrollLeft =
+      currentScrollLeft + addedPixels;
 
-    if (resourcesRef.current) {
-      resourcesRef.current.scrollLeft +=
-        addedPixels;
-    }
+    setAllScrollLeft(nextScrollLeft);
+    setScrollLeft(nextScrollLeft);
 
     extendingRef.current = false;
   }, [
@@ -844,15 +866,15 @@ function useTimelineScroll({
     timelineRange.endMs,
   ]);
 
-  const extendIfRequired = (source) => {
+  const extendIfRequired = (sourceRef) => {
     if (
       extendingRef.current ||
-      !source.current
+      !sourceRef.current
     ) {
       return;
     }
 
-    const element = source.current;
+    const element = sourceRef.current;
 
     const edgeThreshold =
       element.clientWidth *
@@ -904,41 +926,46 @@ function useTimelineScroll({
     }
   };
 
-  const sync = (source, target) => {
-    if (!source.current) {
+  const sync = (sourceRef) => {
+    if (
+      lockRef.current ||
+      !sourceRef.current
+    ) {
       return;
     }
 
-    const next =
-      source.current.scrollLeft;
+    const nextScrollLeft =
+      sourceRef.current.scrollLeft;
 
-    setScrollLeft(next);
+    lockRef.current = true;
 
-    if (
-      !lockRef.current &&
-      target.current
-    ) {
-      lockRef.current = true;
-      target.current.scrollLeft = next;
+    setScrollLeft(nextScrollLeft);
+    setAllScrollLeft(
+      nextScrollLeft,
+      sourceRef
+    );
 
-      requestAnimationFrame(() => {
-        lockRef.current = false;
-      });
-    }
+    requestAnimationFrame(() => {
+      lockRef.current = false;
+    });
 
-    extendIfRequired(source);
+    extendIfRequired(sourceRef);
   };
 
   return {
+    headerRef,
     itemsRef,
     resourcesRef,
     scrollLeft,
 
+    onHeaderScroll: () =>
+      sync(headerRef),
+
     onItemsScroll: () =>
-      sync(itemsRef, resourcesRef),
+      sync(itemsRef),
 
     onResourcesScroll: () =>
-      sync(resourcesRef, itemsRef),
+      sync(resourcesRef),
   };
 }
 
@@ -2200,13 +2227,66 @@ function ItemsPanel({
 }) {
   const { width } =
     useTimelineGeometry();
-  const template = widths.map((width) => `${width}px`).join(' ');
+
+  const template = widths
+    .map((columnWidth) =>
+      `${columnWidth}px`
+    )
+    .join(' ');
+
   const contentWidth = widths.reduce(
-    (sum, width) => sum + width,
+    (sum, columnWidth) =>
+      sum + columnWidth,
     0
   );
 
-  const [tableScrollLeft, setTableScrollLeft] = React.useState(0);
+  const [
+    tableScrollLeft,
+    setTableScrollLeft,
+  ] = React.useState(0);
+  
+  const tableScrollbarRef =
+    React.useRef(null);
+  
+  const tableBodyRef =
+    React.useRef(null);
+  
+  const tableScrollLockRef =
+    React.useRef(false);
+  
+  const syncTableScroll = (
+    sourceRef,
+    targetRef
+  ) => {
+    if (
+      tableScrollLockRef.current ||
+      !sourceRef.current
+    ) {
+      return;
+    }
+  
+    const nextScrollLeft =
+      sourceRef.current.scrollLeft;
+  
+    tableScrollLockRef.current = true;
+  
+    setTableScrollLeft(
+      nextScrollLeft
+    );
+  
+    if (
+      targetRef.current &&
+      targetRef.current.scrollLeft !==
+        nextScrollLeft
+    ) {
+      targetRef.current.scrollLeft =
+        nextScrollLeft;
+    }
+  
+    requestAnimationFrame(() => {
+      tableScrollLockRef.current = false;
+    });
+  };
 
   const headings = [
     'Description',
@@ -2227,26 +2307,54 @@ function ItemsPanel({
 
     const move = (moveEvent) => {
       setWidths((current) =>
-        current.map((width, currentIndex) =>
-          currentIndex === index
-            ? Math.max(
-              60,
-              originWidth + moveEvent.clientX - originX
-            )
-            : width
+        current.map(
+          (
+            columnWidth,
+            currentIndex
+          ) =>
+            currentIndex === index
+              ? Math.max(
+                60,
+                originWidth +
+                moveEvent.clientX -
+                originX
+              )
+              : columnWidth
         )
       );
     };
 
     const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
+      window.removeEventListener(
+        'pointermove',
+        move
+      );
+
+      window.removeEventListener(
+        'pointerup',
+        up
+      );
+
+      window.removeEventListener(
+        'pointercancel',
+        up
+      );
     };
 
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    window.addEventListener(
+      'pointermove',
+      move
+    );
+
+    window.addEventListener(
+      'pointerup',
+      up
+    );
+
+    window.addEventListener(
+      'pointercancel',
+      up
+    );
   };
 
   const idsFor = (row) => {
@@ -2257,15 +2365,23 @@ function ItemsPanel({
     return rows
       .filter(
         (candidate) =>
-          candidate.orderKey === row.orderKey
+          candidate.orderKey ===
+          row.orderKey
       )
-      .map((candidate) => candidate.id);
+      .map(
+        (candidate) =>
+          candidate.id
+      );
   };
 
-  const canMove = (row, direction) => {
+  const canMove = (
+    row,
+    direction
+  ) => {
     const ids = idsFor(row);
     const index = ids.indexOf(row.id);
-    const targetIndex = index + direction;
+    const targetIndex =
+      index + direction;
 
     return (
       index >= 0 &&
@@ -2274,26 +2390,36 @@ function ItemsPanel({
     );
   };
 
-  const moveRow = (row, direction) => {
+  const moveRow = (
+    row,
+    direction
+  ) => {
     if (!row.orderKey) {
       return;
     }
 
     setOrders((current) => {
-      const visibleIds = idsFor(row);
-      const existing = current[row.orderKey] ?? [];
+      const visibleIds =
+        idsFor(row);
+
+      const existing =
+        current[row.orderKey] ?? [];
 
       const ids = [
         ...existing.filter((id) =>
           visibleIds.includes(id)
         ),
         ...visibleIds.filter(
-          (id) => !existing.includes(id)
+          (id) =>
+            !existing.includes(id)
         ),
       ];
 
-      const from = ids.indexOf(row.id);
-      const to = from + direction;
+      const from =
+        ids.indexOf(row.id);
+
+      const to =
+        from + direction;
 
       if (
         from < 0 ||
@@ -2305,10 +2431,13 @@ function ItemsPanel({
 
       const nextIds = [...ids];
 
-      [nextIds[from], nextIds[to]] = [
-        nextIds[to],
+      [
         nextIds[from],
-      ];
+        nextIds[to],
+      ] = [
+          nextIds[to],
+          nextIds[from],
+        ];
 
       return {
         ...current,
@@ -2318,66 +2447,126 @@ function ItemsPanel({
   };
 
   return (
-    <section className="grid min-h-0 flex-1 grid-rows-[2rem_1fr] border-b border-slate-300">
+    <section className="grid min-h-0 flex-1 grid-rows-[2rem_1rem_minmax(0,1fr)] border-b border-slate-300">
       <div className="grid grid-cols-[630px_minmax(0,1fr)] border-b border-slate-300">
         <div className="overflow-hidden border-r">
           <div
             className="grid h-8 text-xs font-semibold"
             style={{
               width: contentWidth,
-              transform: `translateX(-${tableScrollLeft}px)`,
-              gridTemplateColumns: template,
+              transform:
+                `translateX(-${tableScrollLeft}px)`,
+              gridTemplateColumns:
+                template,
             }}
           >
-            {headings.map((heading, index) => (
-              <div
-                key={heading}
-                className="relative overflow-hidden whitespace-nowrap border-r px-2 py-2"
-              >
-                {heading}
-
+            {headings.map(
+              (heading, index) => (
                 <div
-                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
-                  onPointerDown={(event) =>
-                    resize(event, index)
-                  }
-                />
-              </div>
-            ))}
+                  key={heading}
+                  className="relative overflow-hidden whitespace-nowrap border-r px-2 py-2"
+                >
+                  {heading}
+
+                  <div
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
+                    onPointerDown={(
+                      event
+                    ) =>
+                      resize(
+                        event,
+                        index
+                      )
+                    }
+                  />
+                </div>
+              )
+            )}
           </div>
         </div>
 
         <TimelineHeader
-          scrollLeft={timeline.scrollLeft}
+          scrollLeft={
+            timeline.scrollLeft
+          }
         />
+      </div>
+
+      <div className="grid grid-cols-[630px_minmax(0,1fr)] border-b border-slate-300 bg-slate-50">
+        <div
+          ref={tableScrollbarRef}
+          className="h-4 overflow-x-auto overflow-y-hidden border-r"
+          onScroll={() =>
+            syncTableScroll(
+              tableScrollbarRef,
+              tableBodyRef
+            )
+          }
+          aria-label="Table horizontal scrollbar"
+        >
+          <div
+            className="h-px"
+            style={{
+              width: contentWidth,
+            }}
+          />
+        </div>
+
+        <div
+          ref={timeline.headerRef}
+          onScroll={timeline.onHeaderScroll}
+          className="h-4 overflow-x-auto overflow-y-hidden"
+          aria-label="Timeline horizontal scrollbar"
+        >
+          <div
+            className="h-px"
+            style={{ width }}
+          />
+        </div>
       </div>
 
       <div className="min-h-0 overflow-x-hidden overflow-y-auto">
         <div className="grid grid-cols-[630px_minmax(0,1fr)]">
           <div
-            className="overflow-x-auto border-r"
-            onScroll={(event) =>
-              setTableScrollLeft(
-                event.currentTarget.scrollLeft
+            ref={tableBodyRef}
+            className="overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar\]:hidden"
+            onScroll={() =>
+              syncTableScroll(
+                tableBodyRef,
+                tableScrollbarRef
               )
             }
           >
-            <div style={{ width: contentWidth }}>
+            <div
+              style={{
+                width: contentWidth,
+              }}
+            >
               {rows.map((row) => (
                 <TableRow
                   key={`table-${row.rowKey}`}
                   row={row}
                   template={template}
-                  expanded={expanded[row.id]}
+                  expanded={
+                    expanded[row.id]
+                  }
                   toggle={toggle}
                   allocate={allocate}
                   remove={remove}
-                  deleteStoppage={deleteStoppage}
+                  deleteStoppage={
+                    deleteStoppage
+                  }
                   moveRow={moveRow}
                   canMove={canMove}
-                  editingStoppageId={editingStoppageId}
-                  setEditingStoppageId={setEditingStoppageId}
-                  renameStoppage={renameStoppage}
+                  editingStoppageId={
+                    editingStoppageId
+                  }
+                  setEditingStoppageId={
+                    setEditingStoppageId
+                  }
+                  renameStoppage={
+                    renameStoppage
+                  }
                 />
               ))}
             </div>
@@ -2386,17 +2575,25 @@ function ItemsPanel({
           <div className="min-w-0 overflow-hidden">
             <div
               ref={timeline.itemsRef}
-              onScroll={timeline.onItemsScroll}
-              className="overflow-x-auto overflow-y-hidden"
+              onScroll={
+                timeline.onItemsScroll
+              }
+              className="overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <div style={{ width }}>
                 {rows.map((row) => (
                   <GanttRow
                     key={`gantt-${row.rowKey}`}
                     row={row}
-                    overlays={overlays}
-                    startDrag={startDrag}
-                    moveToForecast={moveToForecast}
+                    overlays={
+                      overlays
+                    }
+                    startDrag={
+                      startDrag
+                    }
+                    moveToForecast={
+                      moveToForecast
+                    }
                   />
                 ))}
               </div>
