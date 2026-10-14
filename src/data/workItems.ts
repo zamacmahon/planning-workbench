@@ -14,7 +14,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4123456',
     operationId: '0010',
     resourceDemand: '2x HDF',
-    barClass: 'bg-green-600 text-white',
   },
   {
     id: '4123456-0020',
@@ -29,7 +28,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4123456',
     operationId: '0020',
     resourceDemand: '1x HDF',
-    barClass: 'bg-green-100 border border-green-600 text-slate-950',
   },
   {
     id: '4123456-0030',
@@ -44,7 +42,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4123456',
     operationId: '0030',
     resourceDemand: '2x HDF',
-    barClass: 'bg-green-100 border border-green-600 text-slate-950',
   },
   {
     id: '4991234-0010',
@@ -59,7 +56,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4991234',
     operationId: '0010',
     resourceDemand: '2x HDF',
-    barClass: 'bg-green-600 text-white',
   },
   {
     id: '4776524-0010',
@@ -74,7 +70,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4776524',
     operationId: '0010',
     resourceDemand: '2x HDF',
-    barClass: 'bg-rose-100 border border-rose-600 text-slate-950',
   },
   {
     id: '4776524-0020',
@@ -89,7 +84,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4776524',
     operationId: '0020',
     resourceDemand: '1x HDF',
-    barClass: 'bg-rose-100 border border-rose-600 text-slate-950',
   },
   {
     id: '4776628-0010',
@@ -104,7 +98,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4776628',
     operationId: '0010',
     resourceDemand: '2x HDF',
-    barClass: 'bg-orange-100 border border-orange-600 text-slate-950',
   },
   {
     id: '4776629-0010',
@@ -119,7 +112,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '4776629',
     operationId: '0010',
     resourceDemand: '1x HDF',
-    barClass: 'bg-red-100 border border-red-600 text-slate-950',
   },
   {
     id: 'forecast-task-0010',
@@ -162,7 +154,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '5267001',
     operationId: '0010',
     resourceDemand: '2x HDF, 1x AUT',
-    barClass: 'bg-green-600 text-white',
   },
   {
     id: '5267001-0020',
@@ -177,7 +168,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '5267001',
     operationId: '0020',
     resourceDemand: '1x AUT',
-    barClass: 'bg-blue-100 border border-blue-600 text-slate-950',
   },
   {
     id: '5267014-0010',
@@ -192,7 +182,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '5267014',
     operationId: '0010',
     resourceDemand: '1x BLM',
-    barClass: 'bg-purple-100 border border-purple-600 text-slate-950',
   },
   {
     id: '5388100-0010',
@@ -207,7 +196,6 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '5388100',
     operationId: '0010',
     resourceDemand: '2x TYR',
-    barClass: 'bg-red-600 text-white',
   },
   {
     id: '5388100-0020',
@@ -222,6 +210,5 @@ export const workItems: RawWorkItem[] = [
     workOrderId: '5388100',
     operationId: '0020',
     resourceDemand: '1x HDF',
-    barClass: 'bg-red-100 border border-red-600 text-slate-950',
   },
 ];

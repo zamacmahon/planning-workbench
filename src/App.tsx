@@ -1617,6 +1617,45 @@ function getHeight(row) {
     : 'h-8';
 }
 
+function getBarClass(row) {
+  if (row.type === 'stoppage') {
+    return 'bg-cyan-800 text-white';
+  }
+
+  if (row.isStoppageReason) {
+    return 'bg-green-600 text-white';
+  }
+
+  const workOrderId = row.workOrderId ?? '';
+
+  switch (workOrderId) {
+    case '4123456':
+    case '4991234':
+      return 'bg-green-100 border border-green-600 text-slate-950';
+
+    case '4776524':
+      return 'bg-rose-100 border border-rose-600 text-slate-950';
+
+    case '4776628':
+      return 'bg-orange-100 border border-orange-600 text-slate-950';
+
+    case '4776629':
+      return 'bg-red-100 border border-red-600 text-slate-950';
+
+    case '5267001':
+      return 'bg-blue-100 border border-blue-600 text-slate-950';
+
+    case '5267014':
+      return 'bg-purple-100 border border-purple-600 text-slate-950';
+
+    case '5388100':
+      return 'bg-red-100 border border-red-600 text-slate-950';
+
+    default:
+      return 'bg-slate-100 border border-slate-500 text-slate-950';
+  }
+}
+
 function GanttRow({
   row,
   overlays,
@@ -1817,7 +1856,7 @@ function GanttRow({
         row.startMs != null &&
         durationMs != null && (
           <div
-            className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''}`}
+            className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${getBarClass(row)}`}
             style={{
               left: leftAt(row.startMs),
               width: widthFor(durationMs),

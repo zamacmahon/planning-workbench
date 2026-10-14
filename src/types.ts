@@ -103,11 +103,6 @@ export interface RawWorkItem {
    * "2x HDF, 1x AUT"
    */
   resourceDemand: string;
-
-  /**
-   * Tailwind classes used to style the scheduled Gantt bar.
-   */
-  barClass?: string;
 }
 
 /**
