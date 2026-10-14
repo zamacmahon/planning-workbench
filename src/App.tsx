@@ -522,9 +522,10 @@ function deriveRows(
       rowKey: assetRowId,
       type: 'asset',
       level: 0,
-      hasChildren:
+      hasChildren: // change to true if want the collapsible region to always appear
         assetStoppages.length > 0 ||
-        topLevelReasons.length > 0,
+        topLevelReasons.length > 0 ||
+        unallocatedAssetItems.length > 0,
       description: assetDefinition.description,
       asset: assetDefinition.id,
       priority: null,
@@ -532,6 +533,7 @@ function deriveRows(
       stoppageSummaries:
         assetStoppageSummaries,
     });
+
 
     if (!expanded[assetRowId]) {
       continue;
@@ -700,7 +702,7 @@ function deriveRows(
         type: 'unallocatedHeader',
         level: 2,
         hasChildren:
-          unallocated.length > 0,
+          true,
         description: 'Unallocated Work',
         asset: assetDefinition.id,
         priority: null,
@@ -734,6 +736,36 @@ function deriveRows(
         orderKey: topLevelOrderKey,
       }))
     );
+
+    const assetUnallocatedId =
+      `${assetDefinition.id}-unallocated`;
+
+    rows.push({
+      id: assetUnallocatedId,
+      rowKey: assetUnallocatedId,
+      type: 'assetUnallocatedHeader',
+      level: 1,
+      hasChildren:
+        true,
+      description: 'Unallocated Work',
+      asset: assetDefinition.id,
+      priority: null,
+    });
+
+    if (
+      expanded[assetUnallocatedId]
+    ) {
+      rows.push(
+        ...unallocatedAssetItems.map(
+          (item) => ({
+            ...item,
+            rowKey: `asset-unallocated-${item.id}`,
+            type: 'assetUnallocated',
+            level: 2,
+          })
+        )
+      );
+    }
   }
 
   return rows;
@@ -1184,6 +1216,24 @@ function TableRow({
       </div>
 
       <div className="overflow-hidden whitespace-nowrap border-r px-2 py-2 text-[11px]">
+        {row.type === 'asset' && (
+          <button
+            className="text-sky-700"
+            onClick={() => allocate(row)}
+          >
+            [+] Create Stoppage
+          </button>
+        )}
+
+        {row.type === 'assetUnallocated' && (
+          <button
+            className="text-sky-700"
+            onClick={() => allocate(row)}
+          >
+            [+] Create Stoppage
+          </button>
+        )}
+
         {row.type === 'allocated' && (
           <button
             className="text-sky-700"
@@ -1764,7 +1814,7 @@ function TimelineControls({
       ((scroller.scrollLeft +
         scroller.clientWidth / 2) /
         timelineRange.pixelsPerHour) *
-        HOUR;
+      HOUR;
 
     setTimelineRange((current) => ({
       ...current,
@@ -1837,34 +1887,34 @@ function TimelineControls({
       </label>
 
       <label className="grid gap-1 text-[11px]">
-  <span>
-    Scale
-    <span className="ml-1 text-slate-400">
-      ({zoomLevel.tickHours}h)
-    </span>
-  </span>
+        <span>
+          Scale
+          <span className="ml-1 text-slate-400">
+            ({zoomLevel.tickHours}h)
+          </span>
+        </span>
 
-  <select
-    className="h-8 w-32 border border-slate-300 bg-white px-2 text-xs"
-    value={
-      timelineRange.pixelsPerHour
-    }
-    onChange={(event) =>
-      changeZoom(event.target.value)
-    }
-  >
-    {TIMELINE_CONFIG.zoomLevels.map(
-      (level) => (
-        <option
-          key={level.pixelsPerHour}
-          value={level.pixelsPerHour}
+        <select
+          className="h-8 w-32 border border-slate-300 bg-white px-2 text-xs"
+          value={
+            timelineRange.pixelsPerHour
+          }
+          onChange={(event) =>
+            changeZoom(event.target.value)
+          }
         >
-          {level.label}
-        </option>
-      )
-    )}
-  </select>
-</label>
+          {TIMELINE_CONFIG.zoomLevels.map(
+            (level) => (
+              <option
+                key={level.pixelsPerHour}
+                value={level.pixelsPerHour}
+              >
+                {level.label}
+              </option>
+            )
+          )}
+        </select>
+      </label>
     </div>
   );
 }
@@ -3236,12 +3286,12 @@ export default function PlanningGrid() {
     'planning' | 'resourceCapacity'
   >('planning');
   const [timelineRange, setTimelineRange] =
-  React.useState({
-    startMs: DEFAULT_TIMELINE_START,
-    endMs: DEFAULT_TIMELINE_END,
-    pixelsPerHour:
-      DEFAULT_TIMELINE_ZOOM.pixelsPerHour,
-  });
+    React.useState({
+      startMs: DEFAULT_TIMELINE_START,
+      endMs: DEFAULT_TIMELINE_END,
+      pixelsPerHour:
+        DEFAULT_TIMELINE_ZOOM.pixelsPerHour,
+    });
   const timelineGeometry = React.useMemo(() => {
     const spanMs =
       timelineRange.endMs -
@@ -3281,18 +3331,18 @@ export default function PlanningGrid() {
     const firstTickMs =
       timelineRange.startMs;
 
-      const ticks = [];
+    const ticks = [];
 
-      for (
-        let value = firstTickMs;
-        value <= timelineRange.endMs;
-        value += tickMs
-      ) {
-        ticks.push({
-          value,
-          label: formatDateTime(value),
-        });
-      }
+    for (
+      let value = firstTickMs;
+      value <= timelineRange.endMs;
+      value += tickMs
+    ) {
+      ticks.push({
+        value,
+        label: formatDateTime(value),
+      });
+    }
 
     return {
       startMs: timelineRange.startMs,
@@ -3507,6 +3557,58 @@ export default function PlanningGrid() {
   };
 
   const allocateWork = (row) => {
+    if (row.type === 'asset') {
+      const stoppageId =
+        `stop-${crypto.randomUUID()}`;
+
+      setStoppages((current) => ({
+        ...current,
+        [stoppageId]: {
+          id: stoppageId,
+          asset: row.asset,
+          description:
+            `${row.asset}: New Stoppage`,
+        },
+      }));
+
+      setExpanded((current) => ({
+        ...current,
+        [`asset-${row.asset}`]: true,
+        [stoppageId]: true,
+        [`${stoppageId}-unallocated`]: true,
+      }));
+
+      return;
+    }
+
+    if (row.type === 'assetUnallocated') {
+      const stoppageId =
+        `stop-${crypto.randomUUID()}`;
+    
+      setStoppages((current) => ({
+        ...current,
+        [stoppageId]: {
+          id: stoppageId,
+          asset: row.asset,
+          description: row.description,
+        },
+      }));
+    
+      setAllocation((current) => ({
+        ...current,
+        [row.id]: stoppageId,
+      }));
+    
+      setExpanded((current) => ({
+        ...current,
+        [`asset-${row.asset}`]: true,
+        [stoppageId]: true,
+        [`${stoppageId}-unallocated`]: true,
+      }));
+    
+      return;
+    }
+    
     if (row.type === 'topReason') {
       const stoppageId = `stop-${crypto.randomUUID()}`;
 
