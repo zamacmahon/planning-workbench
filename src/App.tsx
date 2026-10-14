@@ -1244,6 +1244,51 @@ function EditableStoppageDescription({
   );
 }
 
+function EditableDateTimeCell({
+  value,
+  onSave,
+}) {
+  const [draft, setDraft] = React.useState(
+    value == null
+      ? ''
+      : formatDateTimeInput(value)
+  );
+
+  React.useEffect(() => {
+    setDraft(
+      value == null
+        ? ''
+        : formatDateTimeInput(value)
+    );
+  }, [value]);
+
+  if (value == null) {
+    return null;
+  }
+
+  return (
+    <input
+      type="datetime-local"
+      step="60"
+      className="w-full border-0 bg-transparent px-0 text-xs outline-none"
+      value={draft}
+      onChange={(event) =>
+        setDraft(event.target.value)
+      }
+      onBlur={() => {
+        const next =
+          parseDateTimeInput(draft);
+
+        if (Number.isFinite(next)) {
+          onSave(
+            snapDateTime(next)
+          );
+        }
+      }}
+    />
+  );
+}
+
 function TableRow({
   row,
   template,
@@ -1257,6 +1302,8 @@ function TableRow({
   editingStoppageId,
   setEditingStoppageId,
   renameStoppage,
+  setRowStart,
+  setRowEnd,
 }) {
   const height = getHeight(row);
 
@@ -1462,11 +1509,51 @@ function TableRow({
       </div>
 
       <div className="flex items-center whitespace-nowrap border-r px-2">
-        {formatDateTime(row.startMs)}
+        {(
+          row.type === 'stoppage' ||
+          row.type === 'allocated' ||
+          row.type === 'unallocated' ||
+          row.type === 'assetUnallocated' ||
+          row.type === 'topReason'
+        ) &&
+          row.startMs != null &&
+          row.durationMinutes != null ? (
+          <EditableDateTimeCell
+            value={row.startMs}
+            onSave={(startMs) =>
+              setRowStart(
+                row,
+                startMs
+              )
+            }
+          />
+        ) : (
+          formatDateTime(row.startMs)
+        )}
       </div>
 
       <div className="flex items-center whitespace-nowrap border-r px-2">
-        {formatDateTime(finishMs)}
+        {(
+          row.type === 'stoppage' ||
+          row.type === 'allocated' ||
+          row.type === 'unallocated' ||
+          row.type === 'assetUnallocated' ||
+          row.type === 'topReason'
+        ) &&
+          finishMs != null &&
+          row.durationMinutes != null ? (
+          <EditableDateTimeCell
+            value={finishMs}
+            onSave={(endMs) =>
+              setRowEnd(
+                row,
+                endMs
+              )
+            }
+          />
+        ) : (
+          formatDateTime(finishMs)
+        )}
       </div>
 
       <div className="flex items-center whitespace-nowrap border-r px-2">
@@ -2224,6 +2311,8 @@ function ItemsPanel({
   editingStoppageId,
   setEditingStoppageId,
   renameStoppage,
+  setRowStart,
+  setRowEnd,
 }) {
   const { width } =
     useTimelineGeometry();
@@ -2244,16 +2333,16 @@ function ItemsPanel({
     tableScrollLeft,
     setTableScrollLeft,
   ] = React.useState(0);
-  
+
   const tableScrollbarRef =
     React.useRef(null);
-  
+
   const tableBodyRef =
     React.useRef(null);
-  
+
   const tableScrollLockRef =
     React.useRef(false);
-  
+
   const syncTableScroll = (
     sourceRef,
     targetRef
@@ -2264,25 +2353,25 @@ function ItemsPanel({
     ) {
       return;
     }
-  
+
     const nextScrollLeft =
       sourceRef.current.scrollLeft;
-  
+
     tableScrollLockRef.current = true;
-  
+
     setTableScrollLeft(
       nextScrollLeft
     );
-  
+
     if (
       targetRef.current &&
       targetRef.current.scrollLeft !==
-        nextScrollLeft
+      nextScrollLeft
     ) {
       targetRef.current.scrollLeft =
         nextScrollLeft;
     }
-  
+
     requestAnimationFrame(() => {
       tableScrollLockRef.current = false;
     });
@@ -2567,6 +2656,8 @@ function ItemsPanel({
                   renameStoppage={
                     renameStoppage
                   }
+                  setRowStart={setRowStart}
+                  setRowEnd={setRowEnd}
                 />
               ))}
             </div>
@@ -4168,6 +4259,68 @@ export default function PlanningGrid() {
     });
   };
 
+  const setRowStart = (
+    row,
+    startMs
+  ) => {
+    if (
+      row.startMs == null ||
+      row.durationMinutes == null
+    ) {
+      return;
+    }
+
+    if (row.type === 'stoppage') {
+      const delta =
+        startMs - row.startMs;
+
+      setManyStarts(
+        items
+          .filter(
+            (item) =>
+              item.allocatedStoppageId === row.id &&
+              item.startMs != null &&
+              item.durationMinutes != null
+          )
+          .map((item) => ({
+            id: item.id,
+            startMs:
+              item.startMs + delta,
+          }))
+      );
+
+      return;
+    }
+
+    setManyStarts([
+      {
+        id: row.id,
+        startMs,
+      },
+    ]);
+  };
+
+  const setRowEnd = (
+    row,
+    endMs
+  ) => {
+    if (
+      row.startMs == null ||
+      row.durationMinutes == null
+    ) {
+      return;
+    }
+
+    const startMs =
+      endMs -
+      row.durationMinutes * MINUTE;
+
+    setRowStart(
+      row,
+      snapDateTime(startMs)
+    );
+  };
+
   return (
     <div className="flex h-screen flex-col bg-white text-slate-950">
       <header className="border-b border-slate-300 px-4 py-2">
@@ -4239,6 +4392,8 @@ export default function PlanningGrid() {
                 renameStoppage={
                   renameStoppage
                 }
+                setRowStart={setRowStart}
+                setRowEnd={setRowEnd}
               />
 
               <ResourcesPanel
