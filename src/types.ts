@@ -299,6 +299,8 @@ export type ColumnWidths = [
   number,
   number,
   number,
+  number,
+  number,
   number
 ];
 

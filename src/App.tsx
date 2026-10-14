@@ -21,6 +21,74 @@ const SNAP = 15 * MINUTE;
 const DEFAULT_TIMELINE_START = Date.parse('2026-06-29T06:00:00+08:00');
 const DEFAULT_TIMELINE_END = Date.parse('2026-07-03T18:00:00+08:00');
 
+const DEFAULT_COLUMNS = [
+  {
+    key: 'description',
+    label: 'Description',
+    width: 260,
+    render: DescriptionCell,
+  },
+  {
+    key: 'action',
+    label: 'Action',
+    width: 170,
+    render: ActionCell,
+  },
+  {
+    key: 'asset',
+    label: 'Asset',
+    width: 70,
+    render: AssetCell,
+  },
+  {
+    key: 'priority',
+    label: 'Priority',
+    shortLabel: 'Pri',
+    width: 105,
+    render: PriorityCell,
+  },
+  {
+    key: 'availability',
+    label: 'Material Availability',
+    shortLabel: 'Mat',
+    width: 150,
+    render: AvailabilityCell,
+  },
+  {
+    key: 'forecast',
+    label: 'Forecast',
+    width: 125,
+    render: ForecastCell,
+  },
+  {
+    key: 'start',
+    label: 'Start',
+    width: 125,
+    render: StartCell,
+  },
+  {
+    key: 'end',
+    label: 'End',
+    width: 125,
+    render: EndCell,
+  },
+  {
+    key: 'duration',
+    label: 'Duration',
+    width: 90,
+    render: DurationCell,
+  },
+  {
+    key: 'resources',
+    label: 'Resources',
+    width: 100,
+    render: ResourcesCell,
+  },
+];
+
+const COMPACT_WIDTH = 75;
+const COMPACT_LABEL_WIDTH = 60;
+
 const TIMELINE_CONFIG = {
   edgeThresholdViewportFraction: 0.25,
 
@@ -1289,8 +1357,403 @@ function EditableDateTimeCell({
   );
 }
 
+function AssetCell({ row }) {
+  return (
+    <div className="flex items-center border-r px-2 font-semibold">
+      {row.asset}
+    </div>
+  );
+}
+
+function DurationCell({ row }) {
+  return (
+    <div className="flex items-center whitespace-nowrap border-r px-2">
+      {formatDuration(
+        row.durationMinutes
+      )}
+    </div>
+  );
+}
+
+function AvailabilityCell({
+  row,
+  column,
+}) {
+  const availability =
+    row.availability == null
+      ? null
+      : AVAILABILITIES[
+      row.availability
+      ];
+
+  const showLabel =
+    column.width >= COMPACT_WIDTH;
+  const compact = !showLabel;
+
+  return (
+    <div className={`flex items-center whitespace-nowrap border-r px-2 ${compact
+      ? 'justify-center'
+      : 'gap-1'
+      }`}>
+      {availability && (
+        <>
+          <span
+            className="inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center text-base leading-none"
+            style={{
+              color:
+                availability.colour,
+            }}
+            title={`Material availability ${row.availability}: ${availability.label}`}
+            aria-label={`Material availability ${row.availability}: ${availability.label}`}
+          >
+            {availability.symbol}
+          </span>
+
+          {showLabel && (
+            <span className="min-w-0 truncate">
+              {availability.label}
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PriorityCell({
+  row,
+  column,
+}) {
+  const priority =
+    row.priority == null
+      ? null
+      : PRIORITIES[row.priority];
+
+  const showLabel =
+    column.width >= COMPACT_WIDTH;
+  const compact = !showLabel;
+
+  return (
+    <div className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap border-r px-2 ${compact
+      ? 'justify-center'
+      : 'gap-1'
+      }`}>
+      {priority && (
+        <>
+          <span
+            className="inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center text-base leading-none"
+            style={{
+              color: priority.colour,
+            }}
+            title={`Priority ${row.priority}: ${priority.label}`}
+            aria-label={`Priority ${row.priority}: ${priority.label}`}
+          >
+            {priority.symbol}
+          </span>
+
+          {showLabel && (
+            <span className="min-w-0 truncate">
+              {priority.label}
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ForecastCell({ row }) {
+  return (
+    <div className="flex items-center whitespace-nowrap border-r px-2">
+      {formatDateTime(row.forecastMs)}
+    </div>
+  );
+}
+
+function ResourcesCell({ row }) {
+  return (
+    <div className="flex items-center whitespace-nowrap border-r px-2">
+      {row.resourceDemand ?? ''}
+    </div>
+  );
+}
+
+function StartCell({
+  row,
+  setRowStart,
+}) {
+  const canEdit =
+    row.startMs != null &&
+    row.durationMinutes != null &&
+    (
+      row.type === 'stoppage' ||
+      row.type === 'allocated' ||
+      row.type === 'unallocated' ||
+      row.type === 'assetUnallocated' ||
+      row.type === 'topReason'
+    );
+
+  return (
+    <div className="flex items-center whitespace-nowrap border-r px-2">
+      {canEdit ? (
+        <EditableDateTimeCell
+          value={row.startMs}
+          onSave={(startMs) =>
+            setRowStart(
+              row,
+              startMs
+            )
+          }
+        />
+      ) : (
+        formatDateTime(
+          row.startMs
+        )
+      )}
+    </div>
+  );
+}
+
+function EndCell({
+  row,
+  finishMs,
+  setRowEnd,
+}) {
+  const canEdit =
+    finishMs != null &&
+    row.durationMinutes != null &&
+    (
+      row.type === 'stoppage' ||
+      row.type === 'allocated' ||
+      row.type === 'unallocated' ||
+      row.type === 'assetUnallocated' ||
+      row.type === 'topReason'
+    );
+
+  return (
+    <div className="flex items-center whitespace-nowrap border-r px-2">
+      {canEdit ? (
+        <EditableDateTimeCell
+          value={finishMs}
+          onSave={(endMs) =>
+            setRowEnd(
+              row,
+              endMs
+            )
+          }
+        />
+      ) : (
+        formatDateTime(
+          finishMs
+        )
+      )}
+    </div>
+  );
+}
+
+function DescriptionCell({
+  row,
+  expanded,
+  toggle,
+  moveRow,
+  canMove,
+  editingStoppageId,
+  setEditingStoppageId,
+  renameStoppage,
+}) {
+  const reorderable = [
+    'allocated',
+    'unallocated',
+    'topReason',
+  ].includes(row.type);
+
+  const isGroupingHeader =
+    row.type === 'unallocatedHeader' ||
+    row.type === 'assetUnallocatedHeader';
+
+  return (
+    <div
+      className={`
+        flex min-w-0 items-center border-r px-2
+        ${isGroupingHeader
+          ? 'text-slate-700 font-semibold'
+          : ''
+        }
+      `}
+      style={{
+        paddingLeft: `${8 + row.level * 18}px`,
+      }}
+    >
+      {row.hasChildren ? (
+        <button
+          className="mr-1 shrink-0"
+          onClick={() =>
+            toggle(row.id)
+          }
+        >
+          {expanded ? '▼' : '▶'}
+        </button>
+      ) : (
+        <span className="mr-4" />
+      )}
+
+      {row.type === 'stoppage' ? (
+        <EditableStoppageDescription
+          row={row}
+          editing={
+            editingStoppageId === row.id
+          }
+          startEditing={() =>
+            setEditingStoppageId(row.id)
+          }
+          finishEditing={() =>
+            setEditingStoppageId(null)
+          }
+          renameStoppage={
+            renameStoppage
+          }
+        />
+      ) : (
+        <div className="min-w-0 flex-1 truncate">
+          {row.type === 'unallocatedHeader' ||
+            row.type ===
+            'assetUnallocatedHeader' ? (
+            <>
+              <span className="mr-1 text-slate-400">
+                📂
+              </span>
+
+              <span className="font-medium text-slate-500">
+                Unallocated Work
+              </span>
+            </>
+          ) : row.workOrderId ? (
+            <>
+              <WorkOrderLink item={row}>
+                {row.workOrderId}
+              </WorkOrderLink>{' '}
+              {row.operationId}
+              {': '}
+              {row.description}
+            </>
+          ) : (
+            row.description
+          )}
+        </div>
+      )}
+
+      {reorderable && (
+        <span className="ml-2 inline-flex gap-0.5">
+          <button
+            className="h-5 w-5 border disabled:text-slate-300"
+            disabled={
+              !canMove(row, -1)
+            }
+            onClick={() =>
+              moveRow(row, -1)
+            }
+          >
+            ↑
+          </button>
+
+          <button
+            className="h-5 w-5 border disabled:text-slate-300"
+            disabled={
+              !canMove(row, 1)
+            }
+            onClick={() =>
+              moveRow(row, 1)
+            }
+          >
+            ↓
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ActionCell({
+  row,
+  allocate,
+  remove,
+  deleteStoppage,
+}) {
+  return (
+    <div className="flex items-center overflow-hidden whitespace-nowrap border-r px-2 text-[11px]">
+      {row.type === 'asset' && (
+        <button
+          className="text-sky-700"
+          onClick={() =>
+            allocate(row)
+          }
+        >
+          [+] Create Stoppage
+        </button>
+      )}
+
+      {row.type ===
+        'assetUnallocated' && (
+          <button
+            className="text-sky-700"
+            onClick={() =>
+              allocate(row)
+            }
+          >
+            [+] Create Stoppage
+          </button>
+        )}
+
+      {row.type === 'allocated' && (
+        <button
+          className="text-sky-700"
+          onClick={() =>
+            remove(row)
+          }
+        >
+          [-] Remove from Stoppage
+        </button>
+      )}
+
+      {row.type === 'unallocated' && (
+        <button
+          className="text-sky-700"
+          onClick={() =>
+            allocate(row)
+          }
+        >
+          [+] Add to Stoppage
+        </button>
+      )}
+
+      {row.type === 'topReason' && (
+        <button
+          className="text-sky-700"
+          onClick={() =>
+            allocate(row)
+          }
+        >
+          [+] Create Stoppage
+        </button>
+      )}
+
+      {row.type === 'stoppage' && (
+        <button
+          className="text-sky-700"
+          onClick={() =>
+            deleteStoppage(row)
+          }
+        >
+          [-] Delete Stoppage
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TableRow({
   row,
+  columns,
   template,
   expanded,
   toggle,
@@ -1314,15 +1777,26 @@ function TableRow({
       row.durationMinutes * MINUTE
       : null;
 
-  const reorderable = [
-    'allocated',
-    'unallocated',
-    'topReason',
-  ].includes(row.type);
-
   const isGroupingHeader =
     row.type === 'unallocatedHeader' ||
     row.type === 'assetUnallocatedHeader';
+
+  const cellProps = {
+    row,
+    finishMs,
+    expanded,
+    toggle,
+    allocate,
+    remove,
+    deleteStoppage,
+    moveRow,
+    canMove,
+    editingStoppageId,
+    setEditingStoppageId,
+    renameStoppage,
+    setRowStart,
+    setRowEnd,
+  };
 
   return (
     <div
@@ -1334,235 +1808,17 @@ function TableRow({
         gridTemplateColumns: template,
       }}
     >
-      <div
-        className={`
-            flex min-w-0 items-center border-r px-2
-            ${isGroupingHeader
-            ? 'text-slate-700 font-semibold'
-            : ''
-          }
-        `}
-        style={{
-          paddingLeft: `${8 + row.level * 18}px`,
-        }}
-      >
-        {row.hasChildren ? (
-          <button
-            className="mr-1 shrink-0"
-            onClick={() =>
-              toggle(row.id)
-            }
-          >
-            {expanded ? '▼' : '▶'}
-          </button>
-        ) : (
-          <span className="mr-4" />
-        )}
+      {columns.map((column) => {
+        const Cell = column.render;
 
-        {row.type === 'stoppage' ? (
-          <EditableStoppageDescription
-            row={row}
-            editing={
-              editingStoppageId === row.id
-            }
-            startEditing={() =>
-              setEditingStoppageId(row.id)
-            }
-            finishEditing={() =>
-              setEditingStoppageId(null)
-            }
-            renameStoppage={
-              renameStoppage
-            }
+        return (
+          <Cell
+            key={column.key}
+            column={column}
+            {...cellProps}
           />
-        ) : (
-          <div className="min-w-0 flex-1 truncate">
-            {row.type === 'unallocatedHeader' ||
-              row.type === 'assetUnallocatedHeader' ? (
-              <>
-                <span className="mr-1 text-slate-400">
-                  📂
-                </span>
-                <span className="font-medium text-slate-500">
-                  Unallocated Work
-                </span>
-              </>
-            ) : row.workOrderId ? (
-              <>
-                <WorkOrderLink item={row}>
-                  {row.workOrderId}
-                </WorkOrderLink>{' '}
-                {row.operationId}
-                {': '}
-                {row.description}
-              </>
-            ) : (
-              row.description
-            )}
-          </div>
-        )}
-
-        {reorderable && (
-          <span className="ml-2 inline-flex gap-0.5">
-            <button
-              className="h-5 w-5 border disabled:text-slate-300"
-              disabled={
-                !canMove(row, -1)
-              }
-              onClick={() =>
-                moveRow(row, -1)
-              }
-            >
-              ↑
-            </button>
-
-            <button
-              className="h-5 w-5 border disabled:text-slate-300"
-              disabled={
-                !canMove(row, 1)
-              }
-              onClick={() =>
-                moveRow(row, 1)
-              }
-            >
-              ↓
-            </button>
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center overflow-hidden whitespace-nowrap border-r px-2 text-[11px]">
-        {row.type === 'asset' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              allocate(row)
-            }
-          >
-            [+] Create Stoppage
-          </button>
-        )}
-
-        {row.type ===
-          'assetUnallocated' && (
-            <button
-              className="text-sky-700"
-              onClick={() =>
-                allocate(row)
-              }
-            >
-              [+] Create Stoppage
-            </button>
-          )}
-
-        {row.type === 'allocated' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              remove(row)
-            }
-          >
-            [-] Remove from Stoppage
-          </button>
-        )}
-
-        {row.type === 'unallocated' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              allocate(row)
-            }
-          >
-            [+] Add to Stoppage
-          </button>
-        )}
-
-        {row.type === 'topReason' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              allocate(row)
-            }
-          >
-            [+] Create Stoppage
-          </button>
-        )}
-
-        {row.type === 'stoppage' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              deleteStoppage(row)
-            }
-          >
-            [-] Delete Stoppage
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-center border-r px-2 font-semibold">
-        {row.asset}
-      </div>
-
-      <div className="flex items-center whitespace-nowrap border-r px-2">
-        {formatPriority(row.priority)}
-      </div>
-
-      <div className="flex items-center whitespace-nowrap border-r px-2">
-        {(
-          row.type === 'stoppage' ||
-          row.type === 'allocated' ||
-          row.type === 'unallocated' ||
-          row.type === 'assetUnallocated' ||
-          row.type === 'topReason'
-        ) &&
-          row.startMs != null &&
-          row.durationMinutes != null ? (
-          <EditableDateTimeCell
-            value={row.startMs}
-            onSave={(startMs) =>
-              setRowStart(
-                row,
-                startMs
-              )
-            }
-          />
-        ) : (
-          formatDateTime(row.startMs)
-        )}
-      </div>
-
-      <div className="flex items-center whitespace-nowrap border-r px-2">
-        {(
-          row.type === 'stoppage' ||
-          row.type === 'allocated' ||
-          row.type === 'unallocated' ||
-          row.type === 'assetUnallocated' ||
-          row.type === 'topReason'
-        ) &&
-          finishMs != null &&
-          row.durationMinutes != null ? (
-          <EditableDateTimeCell
-            value={finishMs}
-            onSave={(endMs) =>
-              setRowEnd(
-                row,
-                endMs
-              )
-            }
-          />
-        ) : (
-          formatDateTime(finishMs)
-        )}
-      </div>
-
-      <div className="flex items-center whitespace-nowrap border-r px-2">
-        {formatDateTime(row.forecastMs)}
-      </div>
-
-      <div className="flex items-center whitespace-nowrap border-r px-2">
-        {row.resourceDemand ?? ''}
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -2304,8 +2560,8 @@ function ItemsPanel({
   deleteStoppage,
   startDrag,
   moveToForecast,
-  widths,
-  setWidths,
+  columns,
+  setColumns,
   orders,
   setOrders,
   editingStoppageId,
@@ -2317,15 +2573,16 @@ function ItemsPanel({
   const { width } =
     useTimelineGeometry();
 
-  const template = widths
-    .map((columnWidth) =>
-      `${columnWidth}px`
+  const template = columns
+    .map(
+      (column) =>
+        `${column.width}px`
     )
     .join(' ');
 
-  const contentWidth = widths.reduce(
-    (sum, columnWidth) =>
-      sum + columnWidth,
+  const contentWidth = columns.reduce(
+    (sum, column) =>
+      sum + column.width,
     0
   );
 
@@ -2377,38 +2634,33 @@ function ItemsPanel({
     });
   };
 
-  const headings = [
-    'Description',
-    'Action',
-    'Asset',
-    'Priority',
-    'Start',
-    'End',
-    'Forecast',
-    'Resources',
-  ];
-
   const resize = (event, index) => {
     event.preventDefault();
 
-    const originX = event.clientX;
-    const originWidth = widths[index];
+    const originX =
+      event.clientX;
+
+    const originWidth =
+      columns[index].width;
 
     const move = (moveEvent) => {
-      setWidths((current) =>
+      setColumns((current) =>
         current.map(
           (
-            columnWidth,
+            column,
             currentIndex
           ) =>
             currentIndex === index
-              ? Math.max(
-                60,
-                originWidth +
-                moveEvent.clientX -
-                originX
-              )
-              : columnWidth
+              ? {
+                ...column,
+                width: Math.max(
+                  40,
+                  originWidth +
+                  moveEvent.clientX -
+                  originX
+                ),
+              }
+              : column
         )
       );
     };
@@ -2549,23 +2801,23 @@ function ItemsPanel({
                 template,
             }}
           >
-            {headings.map(
-              (heading, index) => (
+            {columns.map(
+              (column, index) => (
                 <div
-                  key={heading}
+                  key={column.key}
                   className="relative overflow-hidden whitespace-nowrap border-r px-2 py-2"
                 >
-                  {heading}
-
+                  <div className="overflow-hidden text-ellipsis whitespace-nowrap" title={column.label}>
+                    {
+                      column.width < COMPACT_LABEL_WIDTH
+                        ? column.shortLabel ?? column.label
+                        : column.label
+                    }
+                  </div>
                   <div
                     className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
-                    onPointerDown={(
-                      event
-                    ) =>
-                      resize(
-                        event,
-                        index
-                      )
+                    onPointerDown={(event) =>
+                      resize(event, index)
                     }
                   />
                 </div>
@@ -2635,6 +2887,7 @@ function ItemsPanel({
                 <TableRow
                   key={`table-${row.rowKey}`}
                   row={row}
+                  columns={columns}
                   template={template}
                   expanded={
                     expanded[row.id]
@@ -3951,9 +4204,12 @@ export default function PlanningGrid() {
       };
     });
   };
-  const [widths, setWidths] = React.useState([
-    260, 170, 70, 105, 125, 125, 125, 100,
-  ]);
+  const [columns, setColumns] =
+    React.useState(() =>
+      DEFAULT_COLUMNS.map((column) => ({
+        ...column,
+      }))
+    );
   const [orders, setOrders] = React.useState(sampleOrders);
   const [
     capacityIntervals,
@@ -4379,8 +4635,8 @@ export default function PlanningGrid() {
                 deleteStoppage={deleteStoppage}
                 startDrag={startDrag}
                 moveToForecast={moveToForecast}
-                widths={widths}
-                setWidths={setWidths}
+                columns={columns}
+                setColumns={setColumns}
                 orders={orders}
                 setOrders={setOrders}
                 editingStoppageId={
