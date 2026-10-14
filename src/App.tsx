@@ -511,6 +511,8 @@ function deriveRows(
         workOrderId: item.workOrderId,
         description: item.description,
         isStoppageReason: true,
+        allocatedStoppageId:
+          item.allocatedStoppageId,
       }))
       .sort(
         (a, b) =>
@@ -636,6 +638,8 @@ function deriveRows(
             workOrderId: item.workOrderId,
             description: item.description,
             isStoppageReason: true,
+            allocatedStoppageId:
+              item.allocatedStoppageId,
           }))
           .sort(
             (a, b) =>
@@ -1227,10 +1231,7 @@ function TableRow({
   setEditingStoppageId,
   renameStoppage,
 }) {
-  const height =
-    row.type === 'unallocatedHeader'
-      ? 'h-8'
-      : 'h-16';
+  const height = getHeight(row);
 
   const finishMs =
     row.startMs != null &&
@@ -1245,18 +1246,30 @@ function TableRow({
     'topReason',
   ].includes(row.type);
 
+  const isGroupingHeader =
+    row.type === 'unallocatedHeader' ||
+    row.type === 'assetUnallocatedHeader';
+
   return (
     <div
-      className={`grid ${height} border-b border-slate-200 text-xs`}
+      className={`grid ${height} border-b border-slate-200 text-xs ${isGroupingHeader
+        ? 'bg-slate-100'
+        : ''
+        }`}
       style={{
         gridTemplateColumns: template,
       }}
     >
       <div
-        className="flex min-w-0 items-start border-r px-2 py-2"
+        className={`
+            flex min-w-0 items-center border-r px-2
+            ${isGroupingHeader
+            ? 'text-slate-700 font-semibold'
+            : ''
+          }
+        `}
         style={{
-          paddingLeft:
-            `${8 + row.level * 18}px`,
+          paddingLeft: `${8 + row.level * 18}px`,
         }}
       >
         {row.hasChildren ? (
@@ -1290,7 +1303,17 @@ function TableRow({
           />
         ) : (
           <div className="min-w-0 flex-1 truncate">
-            {row.workOrderId ? (
+            {row.type === 'unallocatedHeader' ||
+              row.type === 'assetUnallocatedHeader' ? (
+              <>
+                <span className="mr-1 text-slate-400">
+                  📂
+                </span>
+                <span className="font-medium text-slate-500">
+                  Unallocated Work
+                </span>
+              </>
+            ) : row.workOrderId ? (
               <>
                 <WorkOrderLink item={row}>
                   {row.workOrderId}
@@ -1334,7 +1357,7 @@ function TableRow({
         )}
       </div>
 
-      <div className="overflow-hidden whitespace-nowrap border-r px-2 py-2 text-[11px]">
+      <div className="flex items-center overflow-hidden whitespace-nowrap border-r px-2 text-[11px]">
         {row.type === 'asset' && (
           <button
             className="text-sky-700"
@@ -1403,27 +1426,27 @@ function TableRow({
         )}
       </div>
 
-      <div className="border-r px-2 py-2 font-semibold">
+      <div className="flex items-center border-r px-2 font-semibold">
         {row.asset}
       </div>
 
-      <div className="whitespace-nowrap border-r px-2 py-2">
+      <div className="flex items-center whitespace-nowrap border-r px-2">
         {formatPriority(row.priority)}
       </div>
 
-      <div className="whitespace-nowrap border-r px-2 py-2">
+      <div className="flex items-center whitespace-nowrap border-r px-2">
         {formatDateTime(row.startMs)}
       </div>
 
-      <div className="whitespace-nowrap border-r px-2 py-2">
+      <div className="flex items-center whitespace-nowrap border-r px-2">
         {formatDateTime(finishMs)}
       </div>
 
-      <div className="whitespace-nowrap border-r px-2 py-2">
+      <div className="flex items-center whitespace-nowrap border-r px-2">
         {formatDateTime(row.forecastMs)}
       </div>
 
-      <div className="whitespace-nowrap border-r px-2 py-2">
+      <div className="flex items-center whitespace-nowrap border-r px-2">
         {row.resourceDemand ?? ''}
       </div>
     </div>
@@ -1453,7 +1476,10 @@ function BarAnnotation({
 
   const showLabel =
     overlays.descriptions &&
-    Boolean(row.workOrderId);
+    (
+      row.type === 'stoppage' ||
+      Boolean(row.workOrderId)
+    );
 
   const showPriority =
     overlays.priorities &&
@@ -1473,19 +1499,18 @@ function BarAnnotation({
 
   return (
     <div
-      className="absolute top-8 z-30 flex -translate-x-1/2 items-start justify-center gap-1"
+      className="absolute top-1/2 z-30 flex -translate-y-1/2 items-center gap-1"
       style={{
-        left: `calc(${leftAt(row.startMs)
-          } + (${widthFor(
-            durationMs
-          )
-          } / 2))`,
+        left: `calc(${leftAt(
+          row.startMs
+        )} + ${widthFor(
+          durationMs
+        )} + 4px)`,
       }}
     >
-
       {showAvailability && (
         <span
-          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
           style={{
             color: availability.colour,
           }}
@@ -1496,38 +1521,50 @@ function BarAnnotation({
         </span>
       )}
 
-      {
-        showLabel && (
-          <div className="border-2 border-cyan-500 bg-white px-1 text-center text-[10px]">
-            <WorkOrderLink
-              item={row}
-              className="block whitespace-nowrap"
-            >
-              MO {row.workOrderId}
-            </WorkOrderLink>
-
-            <span className="whitespace-nowrap">
+      {showLabel && (
+        <div
+          className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap px-1 text-[10px]"
+          title={
+            row.type === 'stoppage'
+              ? `${row.asset} • ${row.description}`
+              : `${row.workOrderId} ${row.operationId} • ${row.description}`
+          }
+        >
+          {row.type === 'stoppage' ? (
+            <>
+              <span className="font-semibold">
+                {row.asset}
+              </span>
+              {' • '}
               {row.description}
-            </span>
-          </div>
-        )
-      }
+            </>
+          ) : (
+            <>
+              <WorkOrderLink item={row}>
+                {row.workOrderId}
+              </WorkOrderLink>
+              {' '}
+              {row.operationId}
+              {' • '}
+              {row.description}
+            </>
+          )}
+        </div>
+      )}
 
-      {
-        showPriority && (
-          <span
-            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
-            style={{
-              color: priority.colour,
-            }}
-            title={`Priority ${row.priority}: ${priority.label}`}
-            aria-label={`Priority ${row.priority}: ${priority.label}`}
-          >
-            {priority.symbol}
-          </span>
-        )
-      }
-    </div >
+      {showPriority && (
+        <span
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
+          style={{
+            color: priority.colour,
+          }}
+          title={`Priority ${row.priority}: ${priority.label}`}
+          aria-label={`Priority ${row.priority}: ${priority.label}`}
+        >
+          {priority.symbol}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1571,6 +1608,15 @@ function formatWorkTooltip({
   return lines.join('\n');
 }
 
+function getHeight(row) {
+  return [
+    'unallocatedHeader',
+    'assetUnallocatedHeader',
+  ].includes(row.type)
+    ? 'h-6'
+    : 'h-8';
+}
+
 function GanttRow({
   row,
   overlays,
@@ -1583,10 +1629,7 @@ function GanttRow({
     widthFor,
   } = useTimelineGeometry();
 
-  const height =
-    row.type === 'unallocatedHeader'
-      ? 'h-8'
-      : 'h-16';
+  const height = getHeight(row);
 
   const durationMs =
     row.durationMinutes == null
@@ -1609,7 +1652,9 @@ function GanttRow({
               row.description ?? null,
             isStoppageReason:
               row.isStoppageReason ?? false,
-          },
+            allocatedStoppageId:
+              row.allocatedStoppageId ?? null,
+          }
         ];
 
   const stoppageSummaries =
@@ -1643,11 +1688,14 @@ function GanttRow({
               {overlays.resources &&
                 summary.resourceDemand && (
                   <div
-                    className="absolute top-3 z-30 whitespace-nowrap text-[10px] text-red-700"
+                    className="absolute top-1/2 -translate-y-1/2 z-30 whitespace-nowrap text-[10px] text-red-700 text-right"
                     style={{
-                      left: `calc(${leftAt(
-                        summary.startMs
-                      )} - 54px)`,
+                      left: 0,
+                      right: `calc(
+                        100% -
+                        ${leftAt(summary.startMs)}
+                        + 8px
+                      )`,
                     }}
                   >
                     {summary.resourceDemand}
@@ -1655,7 +1703,7 @@ function GanttRow({
                 )}
 
               <div
-                className="absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white"
+                className="absolute top-1/2 -translate-y-1/2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white"
                 style={{
                   left: leftAt(
                     summary.startMs
@@ -1687,15 +1735,16 @@ function GanttRow({
               </div>
 
               {(overlays.availability ||
+                overlays.descriptions ||
                 overlays.priorities) && (
                   <div
-                    className="absolute top-9 z-30 flex -translate-x-1/2 items-center justify-center gap-1"
+                    className="absolute top-1/2 -translate-y-1/2 z-30 flex items-center gap-1"
                     style={{
                       left: `calc(${leftAt(
                         summary.startMs
-                      )} + (${widthFor(
+                      )} + ${widthFor(
                         summaryDurationMs
-                      )} / 2))`,
+                      )} + 4px)`,
                     }}
                   >
                     {overlays.availability &&
@@ -1703,16 +1752,28 @@ function GanttRow({
                         <span
                           className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none"
                           style={{
-                            color:
-                              availability.colour,
+                            color: availability.colour,
                           }}
                           title={`Material availability ${summary.availability}: ${availability.label}`}
                         >
-                          {
-                            availability.symbol
-                          }
+                          {availability.symbol}
                         </span>
                       )}
+
+                    {overlays.descriptions && (
+                      <span
+                        className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap px-1 text-[10px]"
+                        title={summary.description}
+                      >
+                        <>
+                          <span className="font-semibold">
+                            {summary.asset}
+                          </span>
+                          {' • '}
+                          {summary.description}
+                        </>
+                      </span>
+                    )}
 
                     {overlays.priorities &&
                       priority && (
@@ -1738,11 +1799,14 @@ function GanttRow({
         row.resourceDemand &&
         row.startMs != null && (
           <div
-            className="absolute top-3 z-20 text-[10px] text-red-700"
+            className="absolute top-1/2 -translate-y-1/2 z-20 whitespace-nowrap text-[10px] text-red-700 text-right"
             style={{
-              left: `calc(${leftAt(
-                row.startMs
-              )} - 54px)`,
+              left: 0,
+              right: `calc(
+                100% -
+                ${leftAt(row.startMs)}
+                + 8px
+              )`,
             }}
           >
             {row.resourceDemand}
@@ -1753,8 +1817,7 @@ function GanttRow({
         row.startMs != null &&
         durationMs != null && (
           <div
-            className={`absolute top-2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''
-              }`}
+            className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${row.barClass ?? ''}`}
             style={{
               left: leftAt(row.startMs),
               width: widthFor(durationMs),
@@ -1789,14 +1852,28 @@ function GanttRow({
           const forecastMs =
             marker.forecastMs;
 
+          const associatedStoppage =
+            row.type === 'asset' &&
+              marker.allocatedStoppageId
+              ? stoppageSummaries.find(
+                (summary) =>
+                  summary.id ===
+                  marker.allocatedStoppageId
+              )
+              : null;
+
+          const referenceStartMs =
+            row.type === 'asset'
+              ? associatedStoppage?.startMs ?? null
+              : row.startMs ?? null;
+
           const showVarianceLine =
-            row.type !== 'asset' &&
-            row.startMs != null;
+            referenceStartMs != null;
 
           const lineStart =
             showVarianceLine
               ? Math.min(
-                row.startMs,
+                referenceStartMs,
                 forecastMs
               )
               : null;
@@ -1804,14 +1881,20 @@ function GanttRow({
           const lineWidth =
             showVarianceLine
               ? Math.abs(
-                row.startMs -
+                referenceStartMs -
                 forecastMs
               )
               : 0;
 
+          const allocatedStoppageReason =
+            marker.isStoppageReason &&
+            marker.allocatedStoppageId != null;
+
           const forecastType =
             marker.isStoppageReason
-              ? 'Stoppage reason forecast'
+              ? allocatedStoppageReason
+                ? 'Allocated stoppage reason forecast'
+                : 'Stoppage reason forecast'
               : 'Work forecast';
 
           const tooltip = [
@@ -1830,9 +1913,18 @@ function GanttRow({
             .join('\n');
 
           const forecastClass =
-            marker.isStoppageReason
-              ? 'border-green-700 bg-green-100'
-              : 'border-slate-500 bg-slate-100';
+            allocatedStoppageReason
+              ? 'border-blue-700 bg-blue-100'
+              : marker.isStoppageReason
+                ? 'border-green-700 bg-green-100'
+                : 'border-slate-500 bg-slate-100';
+
+          const varianceLineClass =
+            allocatedStoppageReason
+              ? 'border-blue-700'
+              : marker.isStoppageReason
+                ? 'border-green-700'
+                : 'border-slate-500';
 
           return (
             <React.Fragment
@@ -1841,20 +1933,17 @@ function GanttRow({
               {lineStart != null &&
                 lineWidth > 0 && (
                   <div
-                    className="absolute top-5 z-10 border-t border-dotted border-green-700"
+                    className={`absolute top-1/2 z-10 border-t border-dotted ${varianceLineClass}`}
                     style={{
-                      left: leftAt(
-                        lineStart
-                      ),
-                      width: widthFor(
-                        lineWidth
-                      ),
+                      left: leftAt(lineStart),
+                      width: widthFor(lineWidth),
+                      transform: 'translateY(-50%)',
                     }}
                   />
                 )}
 
               <button
-                className={`absolute top-5 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${forecastClass}`}
+                className={`absolute top-1/2 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${forecastClass}`}
                 style={{
                   left: leftAt(forecastMs),
                 }}
@@ -3451,15 +3540,9 @@ export default function PlanningGrid() {
       }px`;
 
     const zoomLevel =
-      TIMELINE_CONFIG.zoomLevels
-        .slice()
-        .reverse()
-        .find(
-          (level) =>
-            timelineRange.pixelsPerHour >=
-            level.pixelsPerHour
-        ) ??
-      TIMELINE_CONFIG.zoomLevels[0];
+      getZoomLevel(
+        timelineRange.pixelsPerHour
+      );
 
     const tickHours =
       zoomLevel.tickHours;
@@ -3735,8 +3818,7 @@ export default function PlanningGrid() {
         [stoppageId]: {
           id: stoppageId,
           asset: row.asset,
-          description:
-            `${row.asset}: Stoppage`,
+          description: 'Stoppage',
         },
       }));
 
@@ -3750,7 +3832,10 @@ export default function PlanningGrid() {
       return;
     }
 
-    if (row.type === 'assetUnallocated') {
+    if (
+      row.type === 'assetUnallocated' ||
+      row.type === 'topReason'
+    ) {
       const stoppageId =
         `stop-${crypto.randomUUID()}`;
 
@@ -3759,35 +3844,7 @@ export default function PlanningGrid() {
         [stoppageId]: {
           id: stoppageId,
           asset: row.asset,
-          description:
-            `${row.asset}: ${row.description}`,
-        },
-      }));
-
-      setAllocation((current) => ({
-        ...current,
-        [row.id]: stoppageId,
-      }));
-
-      setExpanded((current) => ({
-        ...current,
-        [`asset-${row.asset}`]: true,
-        [stoppageId]: true,
-        [`${stoppageId}-unallocated`]: true,
-      }));
-
-      return;
-    }
-
-    if (row.type === 'topReason') {
-      const stoppageId = `stop-${crypto.randomUUID()}`;
-
-      setStoppages((current) => ({
-        ...current,
-        [stoppageId]: {
-          id: stoppageId,
-          asset: row.asset,
-          description: `${row.asset}: ${row.description}`,
+          description: row.description,
         },
       }));
 
@@ -3880,8 +3937,8 @@ export default function PlanningGrid() {
       <header className="border-b border-slate-300 px-4 py-2">
         <h1 className="text-xl font-bold">Planning grid / stoppage mockup</h1>
         <p className="text-xs text-slate-700">
-          The work-order label and priority marker share one centred annotation
-          container beneath each scheduled bar.
+          Resource demand appears before each scheduled bar, with availability,
+          description and priority shown after it.
         </p>
         <div className="mt-2 flex gap-2">
           <button
