@@ -1132,6 +1132,87 @@ function ForecastCross() {
   );
 }
 
+function EditableStoppageDescription({
+  row,
+  editing,
+  startEditing,
+  finishEditing,
+  renameStoppage,
+}) {
+  const [draft, setDraft] = React.useState(
+    row.description
+  );
+
+  React.useEffect(() => {
+    if (editing) {
+      setDraft(row.description);
+    }
+  }, [
+    editing,
+    row.description,
+  ]);
+
+  const save = () => {
+    const description = draft.trim();
+
+    if (description) {
+      renameStoppage(
+        row.id,
+        description
+      );
+    }
+
+    finishEditing();
+  };
+
+  const cancel = () => {
+    setDraft(row.description);
+    finishEditing();
+  };
+
+  if (!editing) {
+    return (
+      <div
+        className="min-w-0 flex-1 cursor-text truncate"
+        title="Double-click to rename"
+        onDoubleClick={startEditing}
+      >
+        {row.description}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      className="min-w-0 flex-1 border border-sky-500 bg-white px-1 py-0.5 text-xs outline-none"
+      value={draft}
+      onChange={(event) =>
+        setDraft(event.target.value)
+      }
+      onBlur={save}
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+      onDoubleClick={(event) =>
+        event.stopPropagation()
+      }
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.currentTarget.blur();
+          return;
+        }
+
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      }}
+    />
+  );
+}
+
 function TableRow({
   row,
   template,
@@ -1142,13 +1223,20 @@ function TableRow({
   deleteStoppage,
   moveRow,
   canMove,
+  editingStoppageId,
+  setEditingStoppageId,
+  renameStoppage,
 }) {
   const height =
-    row.type === 'unallocatedHeader' ? 'h-8' : 'h-16';
+    row.type === 'unallocatedHeader'
+      ? 'h-8'
+      : 'h-16';
 
   const finishMs =
-    row.startMs != null && row.durationMinutes != null
-      ? row.startMs + row.durationMinutes * MINUTE
+    row.startMs != null &&
+      row.durationMinutes != null
+      ? row.startMs +
+      row.durationMinutes * MINUTE
       : null;
 
   const reorderable = [
@@ -1160,18 +1248,23 @@ function TableRow({
   return (
     <div
       className={`grid ${height} border-b border-slate-200 text-xs`}
-      style={{ gridTemplateColumns: template }}
+      style={{
+        gridTemplateColumns: template,
+      }}
     >
       <div
         className="flex min-w-0 items-start border-r px-2 py-2"
         style={{
-          paddingLeft: `${8 + row.level * 18}px`,
+          paddingLeft:
+            `${8 + row.level * 18}px`,
         }}
       >
         {row.hasChildren ? (
           <button
             className="mr-1 shrink-0"
-            onClick={() => toggle(row.id)}
+            onClick={() =>
+              toggle(row.id)
+            }
           >
             {expanded ? '▼' : '▶'}
           </button>
@@ -1179,35 +1272,61 @@ function TableRow({
           <span className="mr-4" />
         )}
 
-        <span className="min-w-0 flex-1 truncate">
-          {row.workOrderId ? (
-            <>
-              <WorkOrderLink item={row}>
-                {row.workOrderId}
-              </WorkOrderLink>{' '}
-              {row.operationId}
-              {': '}
-              {row.description}
-            </>
-          ) : (
-            row.description
-          )}
-        </span>
+        {row.type === 'stoppage' ? (
+          <EditableStoppageDescription
+            row={row}
+            editing={
+              editingStoppageId === row.id
+            }
+            startEditing={() =>
+              setEditingStoppageId(row.id)
+            }
+            finishEditing={() =>
+              setEditingStoppageId(null)
+            }
+            renameStoppage={
+              renameStoppage
+            }
+          />
+        ) : (
+          <div className="min-w-0 flex-1 truncate">
+            {row.workOrderId ? (
+              <>
+                <WorkOrderLink item={row}>
+                  {row.workOrderId}
+                </WorkOrderLink>{' '}
+                {row.operationId}
+                {': '}
+                {row.description}
+              </>
+            ) : (
+              row.description
+            )}
+          </div>
+        )}
 
         {reorderable && (
           <span className="ml-2 inline-flex gap-0.5">
             <button
               className="h-5 w-5 border disabled:text-slate-300"
-              disabled={!canMove(row, -1)}
-              onClick={() => moveRow(row, -1)}
+              disabled={
+                !canMove(row, -1)
+              }
+              onClick={() =>
+                moveRow(row, -1)
+              }
             >
               ↑
             </button>
 
             <button
               className="h-5 w-5 border disabled:text-slate-300"
-              disabled={!canMove(row, 1)}
-              onClick={() => moveRow(row, 1)}
+              disabled={
+                !canMove(row, 1)
+              }
+              onClick={() =>
+                moveRow(row, 1)
+              }
             >
               ↓
             </button>
@@ -1219,25 +1338,32 @@ function TableRow({
         {row.type === 'asset' && (
           <button
             className="text-sky-700"
-            onClick={() => allocate(row)}
+            onClick={() =>
+              allocate(row)
+            }
           >
             [+] Create Stoppage
           </button>
         )}
 
-        {row.type === 'assetUnallocated' && (
-          <button
-            className="text-sky-700"
-            onClick={() => allocate(row)}
-          >
-            [+] Create Stoppage
-          </button>
-        )}
+        {row.type ===
+          'assetUnallocated' && (
+            <button
+              className="text-sky-700"
+              onClick={() =>
+                allocate(row)
+              }
+            >
+              [+] Create Stoppage
+            </button>
+          )}
 
         {row.type === 'allocated' && (
           <button
             className="text-sky-700"
-            onClick={() => remove(row)}
+            onClick={() =>
+              remove(row)
+            }
           >
             [-] Remove from Stoppage
           </button>
@@ -1246,7 +1372,9 @@ function TableRow({
         {row.type === 'unallocated' && (
           <button
             className="text-sky-700"
-            onClick={() => allocate(row)}
+            onClick={() =>
+              allocate(row)
+            }
           >
             [+] Add to Stoppage
           </button>
@@ -1255,7 +1383,9 @@ function TableRow({
         {row.type === 'topReason' && (
           <button
             className="text-sky-700"
-            onClick={() => allocate(row)}
+            onClick={() =>
+              allocate(row)
+            }
           >
             [+] Create Stoppage
           </button>
@@ -1264,7 +1394,9 @@ function TableRow({
         {row.type === 'stoppage' && (
           <button
             className="text-sky-700"
-            onClick={() => deleteStoppage(row)}
+            onClick={() =>
+              deleteStoppage(row)
+            }
           >
             [-] Delete Stoppage
           </button>
@@ -1934,6 +2066,9 @@ function ItemsPanel({
   setWidths,
   orders,
   setOrders,
+  editingStoppageId,
+  setEditingStoppageId,
+  renameStoppage,
 }) {
   const { width } =
     useTimelineGeometry();
@@ -2112,6 +2247,9 @@ function ItemsPanel({
                   deleteStoppage={deleteStoppage}
                   moveRow={moveRow}
                   canMove={canMove}
+                  editingStoppageId={editingStoppageId}
+                  setEditingStoppageId={setEditingStoppageId}
+                  renameStoppage={renameStoppage}
                 />
               ))}
             </div>
@@ -3372,6 +3510,37 @@ export default function PlanningGrid() {
   const [expandedResources, setExpandedResources] = React.useState(
     sampleExpandedResources
   );
+  const [editingStoppageId, setEditingStoppageId] =
+    React.useState(null);
+  const renameStoppage = (
+    stoppageId,
+    description
+  ) => {
+    const nextDescription =
+      description.trim();
+
+    if (!nextDescription) {
+      return;
+    }
+
+    setStoppages((current) => {
+      const stoppage =
+        current[stoppageId];
+
+      if (!stoppage) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [stoppageId]: {
+          ...stoppage,
+          description:
+            nextDescription,
+        },
+      };
+    });
+  };
   const [widths, setWidths] = React.useState([
     260, 170, 70, 105, 125, 125, 125, 100,
   ]);
@@ -3567,7 +3736,7 @@ export default function PlanningGrid() {
           id: stoppageId,
           asset: row.asset,
           description:
-            `${row.asset}: New Stoppage`,
+            `${row.asset}: Stoppage`,
         },
       }));
 
@@ -3584,31 +3753,32 @@ export default function PlanningGrid() {
     if (row.type === 'assetUnallocated') {
       const stoppageId =
         `stop-${crypto.randomUUID()}`;
-    
+
       setStoppages((current) => ({
         ...current,
         [stoppageId]: {
           id: stoppageId,
           asset: row.asset,
-          description: row.description,
+          description:
+            `${row.asset}: ${row.description}`,
         },
       }));
-    
+
       setAllocation((current) => ({
         ...current,
         [row.id]: stoppageId,
       }));
-    
+
       setExpanded((current) => ({
         ...current,
         [`asset-${row.asset}`]: true,
         [stoppageId]: true,
         [`${stoppageId}-unallocated`]: true,
       }));
-    
+
       return;
     }
-    
+
     if (row.type === 'topReason') {
       const stoppageId = `stop-${crypto.randomUUID()}`;
 
@@ -3767,6 +3937,15 @@ export default function PlanningGrid() {
                 setWidths={setWidths}
                 orders={orders}
                 setOrders={setOrders}
+                editingStoppageId={
+                  editingStoppageId
+                }
+                setEditingStoppageId={
+                  setEditingStoppageId
+                }
+                renameStoppage={
+                  renameStoppage
+                }
               />
 
               <ResourcesPanel
