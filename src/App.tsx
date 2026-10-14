@@ -2600,6 +2600,11 @@ function ItemsPanel({
   const tableScrollLockRef =
     React.useRef(false);
 
+  const [
+    draggedColumnKey,
+    setDraggedColumnKey,
+  ] = React.useState(null);
+
   const syncTableScroll = (
     sourceRef,
     targetRef
@@ -2632,6 +2637,84 @@ function ItemsPanel({
     requestAnimationFrame(() => {
       tableScrollLockRef.current = false;
     });
+  };
+
+  const startColumnDrag = (
+    event,
+    columnKey
+  ) => {
+    setDraggedColumnKey(columnKey);
+
+    event.dataTransfer.effectAllowed =
+      'move';
+
+    event.dataTransfer.setData(
+      'text/plain',
+      columnKey
+    );
+  };
+
+  const finishColumnDrag = () => {
+    setDraggedColumnKey(null);
+  };
+
+  const dropColumn = (
+    event,
+    targetColumnKey
+  ) => {
+    event.preventDefault();
+
+    const sourceColumnKey =
+      draggedColumnKey ??
+      event.dataTransfer.getData(
+        'text/plain'
+      );
+
+    if (
+      !sourceColumnKey ||
+      sourceColumnKey === targetColumnKey
+    ) {
+      setDraggedColumnKey(null);
+      return;
+    }
+
+    setColumns((current) => {
+      const sourceIndex =
+        current.findIndex(
+          (column) =>
+            column.key ===
+            sourceColumnKey
+        );
+
+      const targetIndex =
+        current.findIndex(
+          (column) =>
+            column.key ===
+            targetColumnKey
+        );
+
+      if (
+        sourceIndex < 0 ||
+        targetIndex < 0
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+
+      const [movedColumn] =
+        next.splice(sourceIndex, 1);
+
+      next.splice(
+        targetIndex,
+        0,
+        movedColumn
+      );
+
+      return next;
+    });
+
+    setDraggedColumnKey(null);
   };
 
   const resize = (event, index) => {
@@ -2802,26 +2885,77 @@ function ItemsPanel({
             }}
           >
             {columns.map(
-              (column, index) => (
-                <div
-                  key={column.key}
-                  className="relative overflow-hidden whitespace-nowrap border-r px-2 py-2"
-                >
-                  <div className="overflow-hidden text-ellipsis whitespace-nowrap" title={column.label}>
-                    {
-                      column.width < COMPACT_LABEL_WIDTH
-                        ? column.shortLabel ?? column.label
-                        : column.label
-                    }
-                  </div>
+              (column, index) => {
+                const compactLabel =
+                  column.width <
+                  COMPACT_LABEL_WIDTH;
+
+                const headerText =
+                  compactLabel
+                    ? column.shortLabel ??
+                    column.label
+                    : column.label;
+
+                const isDragging =
+                  draggedColumnKey ===
+                  column.key;
+
+                return (
                   <div
-                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
-                    onPointerDown={(event) =>
-                      resize(event, index)
+                    key={column.key}
+                    draggable
+                    className={`relative overflow-hidden whitespace-nowrap border-r px-2 py-2 ${isDragging
+                        ? 'bg-sky-100 opacity-60'
+                        : 'cursor-grab'
+                      }`}
+                    onDragStart={(event) =>
+                      startColumnDrag(
+                        event,
+                        column.key
+                      )
                     }
-                  />
-                </div>
-              )
+                    onDragEnd={
+                      finishColumnDrag
+                    }
+                    onDragOver={(event) => {
+                      event.preventDefault();
+
+                      event.dataTransfer.dropEffect =
+                        'move';
+                    }}
+                    onDrop={(event) =>
+                      dropColumn(
+                        event,
+                        column.key
+                      )
+                    }
+                  >
+                    <div
+                      className="overflow-hidden text-ellipsis whitespace-nowrap"
+                      title={column.label}
+                    >
+                      {headerText}
+                    </div>
+
+                    <div
+                      draggable={false}
+                      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        resize(
+                          event,
+                          index
+                        );
+                      }}
+                      onDragStart={(event) =>
+                        event.preventDefault()
+                      }
+                    />
+                  </div>
+                );
+              }
             )}
           </div>
         </div>
