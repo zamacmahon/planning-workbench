@@ -91,6 +91,11 @@ const COMPACT_LABEL_WIDTH = 60;
 
 const DEFAULT_TABLE_PANE_WIDTH = 630;
 
+const DEFAULT_RESOURCES_PANEL_HEIGHT = 224;
+const COLLAPSED_RESOURCES_PANEL_HEIGHT = 32;
+const MIN_ITEMS_PANEL_HEIGHT = 160;
+const MIN_RESOURCES_PANEL_HEIGHT = 96;
+
 const TIMELINE_CONFIG = {
   edgeThresholdViewportFraction: 0.25,
 
@@ -2647,6 +2652,120 @@ function PaneResizeHandle({
   );
 }
 
+function PanelResizeHandle({
+  resourcesPanelHeight,
+  setResourcesPanelHeight,
+}) {
+  const startResize = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const container =
+      event.currentTarget.parentElement;
+
+    if (!container) {
+      return;
+    }
+
+    const originY =
+      event.clientY;
+
+    const originHeight =
+      resourcesPanelHeight;
+
+    const move = (moveEvent) => {
+      const maximumResourcesHeight =
+        Math.max(
+          MIN_RESOURCES_PANEL_HEIGHT,
+          container.clientHeight -
+          MIN_ITEMS_PANEL_HEIGHT
+        );
+
+      const nextHeight =
+        originHeight -
+        (
+          moveEvent.clientY -
+          originY
+        );
+
+      setResourcesPanelHeight(
+        clamp(
+          nextHeight,
+          MIN_RESOURCES_PANEL_HEIGHT,
+          maximumResourcesHeight
+        )
+      );
+    };
+
+    const finish = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      window.removeEventListener(
+        'pointermove',
+        move
+      );
+
+      window.removeEventListener(
+        'pointerup',
+        finish
+      );
+
+      window.removeEventListener(
+        'pointercancel',
+        finish
+      );
+    };
+
+    document.body.style.cursor =
+      'row-resize';
+
+    document.body.style.userSelect =
+      'none';
+
+    window.addEventListener(
+      'pointermove',
+      move
+    );
+
+    window.addEventListener(
+      'pointerup',
+      finish
+    );
+
+    window.addEventListener(
+      'pointercancel',
+      finish
+    );
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-label="Resize items and resources panels"
+      aria-orientation="horizontal"
+      aria-valuemin={MIN_RESOURCES_PANEL_HEIGHT}
+      aria-valuenow={Math.round(resourcesPanelHeight)}
+      className="group absolute left-0 right-0 z-[60] h-3 translate-y-1/2 cursor-row-resize touch-none"
+      style={{
+        bottom: resourcesPanelHeight,
+      }}
+      onPointerDown={startResize}
+    >
+      <div className="relative h-full w-full">
+        <div
+          className="
+            absolute left-0 right-0 top-1/2 hidden
+            h-0.5 -translate-y-1/2
+            bg-blue-500
+            group-hover:block
+          "
+        />
+      </div>
+    </div>
+  );
+}
+
 function ItemsPanel({
   rows,
   overlays,
@@ -3433,11 +3552,12 @@ function ResourcesPanel({
   expandedResources,
   setExpandedResources,
   tablePaneWidth,
+  open,
+  setOpen,
+  panelHeight,
 }) {
   const { width } =
     useTimelineGeometry();
-
-  const [open, setOpen] = React.useState(true);
 
   const toggle = (code) => {
     setExpandedResources((current) => ({
@@ -3448,55 +3568,82 @@ function ResourcesPanel({
 
   return (
     <section
-      className={`grid ${open ? 'h-56' : 'h-8'} shrink-0 grid-rows-[2rem_1fr]`}
+      className="grid shrink-0 grid-rows-[2rem_minmax(0,1fr)]"
+      style={{
+        height: open
+          ? panelHeight
+          : COLLAPSED_RESOURCES_PANEL_HEIGHT,
+      }}
     >
       <div
         className="grid border-b border-slate-300"
         style={{
           gridTemplateColumns:
             `${tablePaneWidth}px minmax(0, 1fr)`,
-        }}>
+        }}
+      >
         <button
           className="border-r px-2 text-left text-xs font-semibold"
-          onClick={() => setOpen(!open)}
+          onClick={() =>
+            setOpen((current) => !current)
+          }
         >
           {open ? '▼' : '▶'} Resources
         </button>
+
         <div />
       </div>
 
       {open && (
-        <div className="min-h-0 overflow-y-auto overflow-x-hidden">
-          <div className="grid"
+        <div className="min-h-0 overflow-x-hidden overflow-y-auto">
+          <div
+            className="grid"
             style={{
               gridTemplateColumns:
                 `${tablePaneWidth}px minmax(0, 1fr)`,
-            }}>
+            }}
+          >
             <div className="border-r">
-              {resourceSeries.map((resource) => (
-                <ResourceDescription
-                  key={resource.code}
-                  resource={resource}
-                  expanded={expandedResources[resource.code]}
-                  toggle={toggle}
-                />
-              ))}
+              {resourceSeries.map(
+                (resource) => (
+                  <ResourceDescription
+                    key={resource.code}
+                    resource={resource}
+                    expanded={
+                      expandedResources[
+                      resource.code
+                      ]
+                    }
+                    toggle={toggle}
+                  />
+                )
+              )}
             </div>
 
             <div className="min-w-0 overflow-hidden">
               <div
-                ref={timeline.resourcesRef}
-                onScroll={timeline.onResourcesScroll}
+                ref={
+                  timeline.resourcesRef
+                }
+                onScroll={
+                  timeline.onResourcesScroll
+                }
                 className="overflow-x-auto overflow-y-hidden"
               >
                 <div style={{ width }}>
-                  {resourceSeries.map((resource) => (
-                    <ResourceGraph
+                  {resourceSeries.map(
+                    (resource) => <ResourceGraph
                       key={resource.code}
-                      resource={resource}
-                      expanded={expandedResources[resource.code]}
+                      resource={
+                        resource
+                      }
+                      expanded={
+                        expandedResources[
+                        resource.code
+                        ]
+                      }
                     />
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -4477,6 +4624,17 @@ export default function PlanningGrid() {
   ] = React.useState(
     DEFAULT_TABLE_PANE_WIDTH
   );
+  const [
+    resourcesOpen,
+    setResourcesOpen,
+  ] = React.useState(true);
+
+  const [
+    resourcesPanelHeight,
+    setResourcesPanelHeight,
+  ] = React.useState(
+    DEFAULT_RESOURCES_PANEL_HEIGHT
+  );
   const [orders, setOrders] = React.useState(sampleOrders);
   const [
     capacityIntervals,
@@ -4902,6 +5060,17 @@ export default function PlanningGrid() {
                   }
                 />
 
+                {resourcesOpen && (
+                  <PanelResizeHandle
+                    resourcesPanelHeight={
+                      resourcesPanelHeight
+                    }
+                    setResourcesPanelHeight={
+                      setResourcesPanelHeight
+                    }
+                  />
+                )}
+
                 <ItemsPanel
                   rows={rows}
                   overlays={overlays}
@@ -4950,6 +5119,11 @@ export default function PlanningGrid() {
                   }
                   tablePaneWidth={
                     tablePaneWidth
+                  }
+                  open={resourcesOpen}
+                  setOpen={setResourcesOpen}
+                  panelHeight={
+                    resourcesPanelHeight
                   }
                 />
               </div>
