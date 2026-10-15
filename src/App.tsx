@@ -15,6 +15,10 @@ import {
   sampleOrders,
 } from './data/sampleState';
 
+import type {
+  ResourceInteraction,
+} from './types';
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const SNAP = 15 * MINUTE;
@@ -95,6 +99,16 @@ const DEFAULT_RESOURCES_PANEL_HEIGHT = 224;
 const COLLAPSED_RESOURCES_PANEL_HEIGHT = 32;
 const MIN_ITEMS_PANEL_HEIGHT = 160;
 const MIN_RESOURCES_PANEL_HEIGHT = 96;
+
+const resourceDefinitionByCode =
+  Object.fromEntries(
+    resourceDefinitions.map(
+      (resource) => [
+        resource.resourceCode,
+        resource,
+      ]
+    )
+  );
 
 const TIMELINE_CONFIG = {
   edgeThresholdViewportFraction: 0.25,
@@ -503,6 +517,118 @@ function calculatePeakResourceDemands(
       (demand) =>
         demand.quantity > 0
     );
+}
+
+function calculateResourcePreviewIntervals(
+  items
+) {
+  const timedItems = items.filter(
+    (item) =>
+      item.startMs != null &&
+      item.durationMinutes != null &&
+      item.durationMinutes > 0
+  );
+
+  if (timedItems.length === 0) {
+    return [];
+  }
+
+  const boundaries = [
+    ...new Set(
+      timedItems.flatMap((item) => [
+        item.startMs,
+        item.startMs +
+        item.durationMinutes * MINUTE,
+      ])
+    ),
+  ].sort((a, b) => a - b);
+
+  const intervals = [];
+
+  for (
+    let index = 0;
+    index < boundaries.length - 1;
+    index += 1
+  ) {
+    const startMs = boundaries[index];
+    const endMs = boundaries[index + 1];
+
+    if (endMs <= startMs) {
+      continue;
+    }
+
+    const activeItems =
+      timedItems.filter((item) => {
+        const itemEndMs =
+          item.startMs +
+          item.durationMinutes * MINUTE;
+
+        return (
+          item.startMs < endMs &&
+          itemEndMs > startMs
+        );
+      });
+
+    const demandsByResource =
+      new Map();
+
+    for (const item of activeItems) {
+      for (
+        const demand of
+        getResourceDemands(item)
+      ) {
+        if (
+          !demand.resourceCode ||
+          !Number.isFinite(
+            demand.quantity
+          ) ||
+          demand.quantity <= 0
+        ) {
+          continue;
+        }
+
+        const existing =
+          demandsByResource.get(
+            demand.resourceCode
+          ) ?? {
+            resourceCode:
+              demand.resourceCode,
+            quantity: 0,
+            contributorIds: [],
+          };
+
+        existing.quantity +=
+          demand.quantity;
+
+        existing.contributorIds.push(
+          item.id
+        );
+
+        demandsByResource.set(
+          demand.resourceCode,
+          existing
+        );
+      }
+    }
+
+    for (
+      const demand of
+      demandsByResource.values()
+    ) {
+      intervals.push({
+        resourceCode:
+          demand.resourceCode,
+        startMs,
+        endMs,
+        quantity:
+          demand.quantity,
+        contributorIds:
+          demand.contributorIds,
+      });
+    }
+  }
+
+  return intervals;
 }
 
 function applyState(allocation, schedule) {
@@ -2087,6 +2213,8 @@ function GanttRow({
   overlays,
   startDrag,
   moveToForecast,
+  startResourceHover,
+  finishResourceHover,
 }) {
   const {
     width,
@@ -2197,6 +2325,18 @@ function GanttRow({
                     summaryDurationMs,
                   forecastMs: null,
                 })}
+                onPointerEnter={() =>
+                  startResourceHover({
+                    ...summary,
+                    type: 'stoppage',
+                  })
+                }
+                onPointerLeave={() =>
+                  finishResourceHover({
+                    ...summary,
+                    type: 'stoppage',
+                  })
+                }
                 onPointerDown={(event) =>
                   startDrag(event, {
                     ...summary,
@@ -2312,6 +2452,12 @@ function GanttRow({
                   ? null
                   : row.forecastMs ?? null,
             })}
+            onPointerEnter={() =>
+              startResourceHover(row)
+            }
+            onPointerLeave={() =>
+              finishResourceHover(row)
+            }
             onPointerDown={(event) =>
               startDrag(event, row)
             }
@@ -2833,6 +2979,8 @@ function ItemsPanel({
   rows,
   overlays,
   timeline,
+  startResourceHover,
+  finishResourceHover,
   expanded,
   toggle,
   allocate,
@@ -3371,6 +3519,12 @@ function ItemsPanel({
                     moveToForecast={
                       moveToForecast
                     }
+                    startResourceHover={
+                      startResourceHover
+                    }
+                    finishResourceHover={
+                      finishResourceHover
+                    }
                   />
                 ))}
               </div>
@@ -3448,15 +3602,65 @@ function ResourceDescription({
   );
 }
 
-function ResourceGraph({
+function getResourceGraphScale(
   resource,
-  expanded,
-}) {
-  const {
-    width,
-    leftAt,
-    widthFor,
-  } = useTimelineGeometry();
+  resourcePreviewIntervals
+) {
+  const resourcePreviews =
+    resourcePreviewIntervals.filter(
+      (interval) =>
+        interval.resourceCode ===
+        resource.resourceCode
+    );
+
+  const projectedQuantities =
+    resourcePreviews.flatMap(
+      (preview) =>
+        resource.intervals.flatMap(
+          (interval) => {
+            const startMs = Math.max(
+              preview.startMs,
+              interval.startMs
+            );
+
+            const endMs = Math.min(
+              preview.endMs,
+              interval.endMs
+            );
+
+            if (endMs <= startMs) {
+              return [];
+            }
+
+            const selectedContributorIds =
+              new Set(
+                preview.contributorIds
+              );
+
+            const includedSelectedQuantity =
+              interval.contributors
+                .filter((contributor) =>
+                  selectedContributorIds.has(
+                    contributor.id
+                  )
+                )
+                .reduce(
+                  (sum, contributor) =>
+                    sum +
+                    contributor.quantity,
+                  0
+                );
+
+            return [
+              Math.max(
+                0,
+                interval.quantity -
+                includedSelectedQuantity
+              ) + preview.quantity,
+            ];
+          }
+        )
+    );
 
   const maxLevel = Math.max(
     1,
@@ -3465,8 +3669,242 @@ function ResourceGraph({
         interval.quantity,
         interval.capacity,
       ]
+    ),
+    ...projectedQuantities
+  );
+
+  const gridStep =
+    maxLevel <= 5
+      ? 1
+      : maxLevel <= 10
+        ? 2
+        : maxLevel <= 20
+          ? 5
+          : maxLevel <= 50
+            ? 10
+            : 20;
+
+  const gridLines = [];
+
+  for (
+    let value = 0;
+    value <= maxLevel;
+    value += gridStep
+  ) {
+    gridLines.push(value);
+  }
+
+  if (
+    gridLines[
+    gridLines.length - 1
+    ] !== maxLevel
+  ) {
+    gridLines.push(maxLevel);
+  }
+
+  const plotBottom = 0;
+  const plotHeight = 80;
+
+  const plotHeightFor = (
+    quantity
+  ) =>
+    Math.max(
+      0,
+      (quantity / maxLevel) *
+      plotHeight
+    );
+
+  return {
+    maxLevel,
+    gridLines,
+    plotBottom,
+    plotHeight,
+    plotHeightFor,
+  };
+}
+
+function ResourceAxisRow({
+  resource,
+  resourcePreviewIntervals,
+  expanded,
+}) {
+  if (!expanded) {
+    return (
+      <div className="h-8" />
+    );
+  }
+
+  const {
+    gridLines,
+    plotBottom,
+    plotHeightFor,
+  } = getResourceGraphScale(
+    resource,
+    resourcePreviewIntervals
+  );
+
+  return (
+    <div className="relative h-24">
+      {gridLines.map((value) => {
+        const lineBottom =
+          plotBottom +
+          plotHeightFor(value);
+
+        const labelBottom = lineBottom;
+
+        return (
+          <React.Fragment
+            key={`axis-${resource.resourceCode}-${value}`}
+          >
+            <div
+              className="pointer-events-none absolute left-1 z-50 translate-y-[3px] bg-white/90 px-0.5 text-[9px] leading-none text-slate-500" style={{
+                bottom:
+                  `${labelBottom}px`,
+              }}
+            >
+              {value === 0 ? '' : formatResourceQuantity(
+                value
+              )}
+            </div>
+
+            <div
+              className="pointer-events-none absolute right-1 z-50 translate-y-[3px] bg-white/90 px-0.5 text-[9px] leading-none text-slate-500"
+              style={{
+                bottom:
+                  `${labelBottom}px`,
+              }}
+            >
+              {value === 0 ? '' : formatResourceQuantity(
+                value
+              )}
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function ResourceGraph({
+  resource,
+  resourcePreviewIntervals,
+  expanded,
+}) {
+  const {
+    width,
+    leftAt,
+    widthFor,
+  } = useTimelineGeometry();
+
+  const resourcePreviews =
+    resourcePreviewIntervals.filter(
+      (interval) =>
+        interval.resourceCode ===
+        resource.resourceCode
+    );
+
+  const resourcePreviewSegments =
+    resourcePreviews.flatMap(
+      (preview) =>
+        resource.intervals.flatMap(
+          (interval) => {
+            const startMs = Math.max(
+              preview.startMs,
+              interval.startMs
+            );
+
+            const endMs = Math.min(
+              preview.endMs,
+              interval.endMs
+            );
+
+            if (endMs <= startMs) {
+              return [];
+            }
+
+            const selectedContributorIds =
+              new Set(
+                preview.contributorIds
+              );
+
+            const includedSelectedQuantity =
+              interval.contributors
+                .filter((contributor) =>
+                  selectedContributorIds.has(
+                    contributor.id
+                  )
+                )
+                .reduce(
+                  (sum, contributor) =>
+                    sum +
+                    contributor.quantity,
+                  0
+                );
+
+            const selectedQuantity =
+              preview.quantity;
+
+            if (selectedQuantity <= 0) {
+              return [];
+            }
+
+            const otherQuantity =
+              Math.max(
+                0,
+                interval.quantity -
+                includedSelectedQuantity
+              );
+
+            return [
+              {
+                startMs,
+                endMs,
+                selectedQuantity,
+                otherQuantity,
+                projectedQuantity:
+                  otherQuantity +
+                  selectedQuantity,
+                contributorIds:
+                  preview.contributorIds,
+                alreadyIncluded:
+                  includedSelectedQuantity >
+                  0,
+              },
+            ];
+          }
+        )
+    );
+
+  const {
+    maxLevel,
+    gridLines,
+    plotBottom,
+    plotHeight,
+    plotHeightFor,
+  } = getResourceGraphScale(
+    resource,
+    resourcePreviewIntervals
+  );
+
+  const peakQuantity = Math.max(
+    1,
+    ...resource.intervals.flatMap(
+      (interval) => [
+        interval.quantity,
+        interval.hasCapacityData
+          ? interval.capacity
+          : 0,
+      ]
     )
   );
+
+  const missingCapacityHeight =
+    Math.max(
+      3,
+      plotHeightFor(
+        peakQuantity
+      )
+    );
 
   return (
     <div
@@ -3537,9 +3975,9 @@ function ResourceGraph({
                 ? 0
                 : Math.max(
                   3,
-                  (interval.quantity /
-                    maxLevel) *
-                  76
+                  plotHeightFor(
+                    interval.quantity
+                  )
                 );
 
             const capacityHeight =
@@ -3547,9 +3985,9 @@ function ResourceGraph({
                 ? 0
                 : Math.max(
                   2,
-                  (interval.capacity /
-                    maxLevel) *
-                  76
+                  plotHeightFor(
+                    interval.capacity
+                  )
                 );
 
             return (
@@ -3558,7 +3996,7 @@ function ResourceGraph({
               >
                 {missingCapacity && (
                   <div
-                    className="absolute bottom-1 top-1 z-10 border border-amber-300 bg-amber-50/70"
+                    className="absolute z-10 border-y border-amber-300 bg-amber-50/70"
                     style={{
                       left: leftAt(
                         interval.startMs
@@ -3566,6 +4004,10 @@ function ResourceGraph({
                       width: widthFor(
                         intervalWidth
                       ),
+                      bottom:
+                        `${plotBottom}px`,
+                      height:
+                        `${missingCapacityHeight}px`,
                     }}
                     title={tooltip}
                   />
@@ -3573,14 +4015,15 @@ function ResourceGraph({
 
                 {capacityHeight > 0 && (
                   <div
-                    className="pointer-events-none absolute bottom-1 z-20 border-t-2 border-dashed border-slate-700"
-                    style={{
+                    className="pointer-events-none absolute z-20 border-t-2 border-dashed border-slate-700" style={{
                       left: leftAt(
                         interval.startMs
                       ),
                       width: widthFor(
                         intervalWidth
                       ),
+                      bottom:
+                        `${plotBottom}px`,
                       height:
                         `${capacityHeight}px`,
                     }}
@@ -3589,14 +4032,15 @@ function ResourceGraph({
 
                 {demandHeight > 0 && (
                   <div
-                    className="absolute bottom-1 z-30"
-                    style={{
+                    className="absolute z-30" style={{
                       left: leftAt(
                         interval.startMs
                       ),
                       width: widthFor(
                         intervalWidth
                       ),
+                      bottom:
+                        `${plotBottom}px`,
                       height:
                         `${demandHeight}px`,
                       backgroundColor:
@@ -3606,24 +4050,21 @@ function ResourceGraph({
                     }}
                     title={tooltip}
                   >
-                    <span className="absolute left-1 top-0 text-[9px] text-white">
-                      {formatResourceQuantity(
-                        interval.quantity
-                      )}
-                    </span>
+
                   </div>
                 )}
 
                 {demandHeight === 0 && (
                   <div
-                    className="absolute bottom-1 z-30 h-2"
-                    style={{
+                    className="absolute z-30 h-2" style={{
                       left: leftAt(
                         interval.startMs
                       ),
                       width: widthFor(
                         intervalWidth
                       ),
+                      bottom:
+                        `${plotBottom}px`,
                     }}
                     title={tooltip}
                   />
@@ -3632,12 +4073,100 @@ function ResourceGraph({
             );
           }
         )}
+      {expanded &&
+        resourcePreviewSegments.map(
+          (segment, index) => {
+            const selectedHeight =
+              Math.max(
+                3,
+                plotHeightFor(
+                  segment.selectedQuantity
+                )
+              );
+
+            const otherHeight =
+              segment.otherQuantity === 0
+                ? 0
+                : Math.max(
+                  3,
+                  plotHeightFor(
+                    segment.otherQuantity
+                  )
+                );
+
+            const tooltip = [
+              `${resource.resourceCode
+              } selected: ${formatResourceQuantity(
+                segment.selectedQuantity
+              )}`,
+              `${resource.resourceCode
+              } other: ${formatResourceQuantity(
+                segment.otherQuantity
+              )}`,
+              `Orders: ${segment.contributorIds.join(
+                ', '
+              )}`,
+            ].join('\n');
+
+            return (
+              <div
+                key={`preview-${segment.startMs}-${segment.endMs}-${index}`}
+                className="pointer-events-none absolute z-40"
+                style={{
+                  left: leftAt(
+                    segment.startMs
+                  ),
+                  width: widthFor(
+                    segment.endMs -
+                    segment.startMs
+                  ),
+                  bottom:
+                    `${plotBottom + otherHeight}px`,
+                  height:
+                    `${selectedHeight}px`,
+                  backgroundImage:
+                    `repeating-linear-gradient(
+                      0deg,
+                      white 0,
+                      white 1px,
+                      ${resource.colour}80 1px,
+                      ${resource.colour}80 3px
+                    )`,
+                }}
+                title={tooltip}
+              />
+            );
+          }
+        )}
+
+      {expanded &&
+        gridLines.map((value) => {
+          if (value === 0) {
+            return null;
+          }
+
+          const lineBottom =
+            plotBottom +
+            plotHeightFor(value);
+
+          return (
+            <div
+              key={`grid-${value}`}
+              className="pointer-events-none absolute left-0 right-0 z-40 border-t border-slate-300"
+              style={{
+                bottom:
+                  `${lineBottom}px`,
+              }}
+            />
+          );
+        })}
     </div>
   );
 }
 
 function ResourcesPanel({
   resourceSeries,
+  resourcePreviewIntervals,
   timeline,
   expandedResources,
   setExpandedResources,
@@ -3646,6 +4175,20 @@ function ResourcesPanel({
   setOpen,
   panelHeight,
 }) {
+  React.useLayoutEffect(() => {
+    if (
+      open &&
+      timeline.resourcesRef.current
+    ) {
+      timeline.resourcesRef.current.scrollLeft =
+        timeline.scrollLeft;
+    }
+  }, [
+    open,
+    timeline.scrollLeft,
+    timeline.resourcesRef,
+  ]);
+
   const { width } =
     useTimelineGeometry();
 
@@ -3721,7 +4264,7 @@ function ResourcesPanel({
               )}
             </div>
 
-            <div className="min-w-0 overflow-hidden">
+            <div className="relative min-w-0 overflow-hidden">
               <div
                 ref={
                   timeline.resourcesRef
@@ -3743,6 +4286,9 @@ function ResourcesPanel({
                         resource={
                           resource
                         }
+                        resourcePreviewIntervals={
+                          resourcePreviewIntervals
+                        }
                         expanded={
                           expandedResources[
                           resource
@@ -3753,6 +4299,26 @@ function ResourcesPanel({
                     )
                   )}
                 </div>
+              </div>
+
+              <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
+                {resourceSeries.map(
+                  (resource) => (
+                    <ResourceAxisRow
+                      key={`axis-${resource.resourceCode}`}
+                      resource={resource}
+                      resourcePreviewIntervals={
+                        resourcePreviewIntervals
+                      }
+                      expanded={
+                        expandedResources[
+                        resource
+                          .resourceCode
+                        ]
+                      }
+                    />
+                  )
+                )}
               </div>
             </div>
           </div>
@@ -4689,6 +5255,7 @@ export default function PlanningGrid() {
   const [expandedResources, setExpandedResources] = React.useState(
     sampleExpandedResources
   );
+
   const [editingStoppageId, setEditingStoppageId] =
     React.useState(null);
   const renameStoppage = (
@@ -4754,7 +5321,92 @@ export default function PlanningGrid() {
     setTimelineRange,
   });
   const items = applyState(allocation, schedule);
-  const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
+  const itemById = Object.fromEntries(
+    items.map((item) => [
+      item.id,
+      item,
+    ])
+  );
+
+  const [
+    resourceInteraction,
+    setResourceInteraction,
+  ] = React.useState<
+    ResourceInteraction | null
+  >(null);
+
+  const getInteractionWorkItemIds = (
+    row
+  ) => {
+    if (row.type === 'stoppage') {
+      return items
+        .filter(
+          (item) =>
+            item.allocatedStoppageId ===
+            row.id
+        )
+        .map((item) => item.id);
+    }
+
+    return itemById[row.id]
+      ? [row.id]
+      : [];
+  };
+
+  const startResourceHover = (
+    row
+  ) => {
+    const workItemIds =
+      getInteractionWorkItemIds(row);
+
+    if (workItemIds.length === 0) {
+      return;
+    }
+
+    setResourceInteraction(
+      (current) => {
+        if (current?.mode === 'drag') {
+          return current;
+        }
+
+        return {
+          mode: 'hover',
+          sourceId: row.id,
+          workItemIds,
+        };
+      }
+    );
+  };
+
+  const finishResourceHover = (
+    row
+  ) => {
+    setResourceInteraction(
+      (current) => {
+        if (
+          current?.mode !== 'hover' ||
+          current.sourceId !== row.id
+        ) {
+          return current;
+        }
+
+        return null;
+      }
+    );
+  };
+
+  const resourcePreviewIntervals =
+    resourceInteraction
+      ? calculateResourcePreviewIntervals(
+        resourceInteraction.workItemIds
+          .map(
+            (workItemId) =>
+              itemById[workItemId]
+          )
+          .filter(Boolean)
+      )
+      : [];
+
   const rows = deriveRows(
     items,
     stoppages,
@@ -4862,6 +5514,19 @@ export default function PlanningGrid() {
       ])
     );
 
+    const workItemIds =
+      members.map((item) => item.id);
+
+    if (workItemIds.length === 0) {
+      return;
+    }
+
+    setResourceInteraction({
+      mode: 'drag',
+      sourceId: row.id,
+      workItemIds,
+    });
+
     const move = (moveEvent) => {
       const pixelDelta =
         moveEvent.clientX - originX;
@@ -4898,6 +5563,14 @@ export default function PlanningGrid() {
       window.removeEventListener(
         'pointercancel',
         up
+      );
+
+      setResourceInteraction(
+        (current) =>
+          current?.mode === 'drag' &&
+            current.sourceId === row.id
+            ? null
+            : current
       );
     };
 
@@ -5183,6 +5856,12 @@ export default function PlanningGrid() {
                   rows={rows}
                   overlays={overlays}
                   timeline={timeline}
+                  startResourceHover={
+                    startResourceHover
+                  }
+                  finishResourceHover={
+                    finishResourceHover
+                  }
                   expanded={expanded}
                   toggle={toggleExpanded}
                   allocate={allocateWork}
@@ -5217,6 +5896,9 @@ export default function PlanningGrid() {
                 <ResourcesPanel
                   resourceSeries={
                     resourceSeries
+                  }
+                  resourcePreviewIntervals={
+                    resourcePreviewIntervals
                   }
                   timeline={timeline}
                   expandedResources={

@@ -331,3 +331,32 @@ export interface Stoppage {
 }
 
 export type StoppageState = Record<StoppageId, Stoppage>;
+
+export type ResourceInteractionMode =
+  | 'hover'
+  | 'drag';
+
+export interface ResourceInteraction {
+  mode: ResourceInteractionMode;
+
+  /**
+   * Row or stoppage that initiated the interaction.
+   */
+  sourceId: string;
+
+  /**
+   * Work items whose resource demand is being handled.
+   *
+   * A work-order interaction contains one ID.
+   * A stoppage interaction contains all allocated work-item IDs.
+   */
+  workItemIds: string[];
+}
+
+export interface ResourcePreviewInterval {
+  resourceCode: string;
+  startMs: DateTimeMs;
+  endMs: DateTimeMs;
+  quantity: number;
+  contributorIds: string[];
+}
