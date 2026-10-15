@@ -333,7 +333,7 @@ function formatResourceDemandIcons(
     .map((demand) => {
       const resource =
         resourceDefinitionByCode[
-          demand.resourceCode
+        demand.resourceCode
         ];
 
       const emoji =
@@ -1247,6 +1247,27 @@ function useTimelineScroll({
   };
 }
 
+function ExpandIcon({
+  expanded,
+}) {
+  return (
+    <span
+      className={`
+        inline-block
+        w-3
+        text-center
+        transition-transform
+        ${expanded
+          ? ''
+          : '-rotate-90'
+        }
+      `}
+    >
+      ▼
+    </span>
+  );
+}
+
 function Accordion({ title, children }) {
   const [open, setOpen] = React.useState(true);
   return (
@@ -1255,7 +1276,9 @@ function Accordion({ title, children }) {
         className="h-8 w-full px-2 text-left text-xs font-semibold"
         onClick={() => setOpen(!open)}
       >
-        {open ? '▼' : '▶'} {title}
+        <ExpandIcon
+          expanded={open}
+        /> {title}
       </button>
       {open && <div className="px-2 pb-3 text-xs">{children}</div>}
     </section>
@@ -1699,20 +1722,20 @@ function ResourcesCell({
     >
       {showText
         ? resourceDemands
-            .map((demand) => {
-              const resource =
-                resourceDefinitionByCode[
-                  demand.resourceCode
-                ];
+          .map((demand) => {
+            const resource =
+              resourceDefinitionByCode[
+              demand.resourceCode
+              ];
 
-              return `${formatResourceQuantity(
-                demand.quantity
-              )}x ${demand.resourceCode}${resource?.emoji ?? ''}`;
-            })
-            .join(', ')
+            return `${formatResourceQuantity(
+              demand.quantity
+            )}x ${demand.resourceCode}${resource?.emoji ?? ''}`;
+          })
+          .join(', ')
         : formatResourceDemandIcons(
-            resourceDemands
-          )}
+          resourceDemands
+        )}
     </div>
   );
 }
@@ -1830,7 +1853,9 @@ function DescriptionCell({
             toggle(row.id)
           }
         >
-          {expanded ? '▼' : '▶'}
+          <ExpandIcon
+            expanded={expanded}
+          />
         </button>
       ) : (
         <span className="mr-4" />
@@ -2317,7 +2342,7 @@ function GanttRow({
       getRowResourceDemands(row)
     );
 
-    const resourceDemandIcons =
+  const resourceDemandIcons =
     formatResourceDemandIcons(
       getRowResourceDemands(row)
     );
@@ -2347,10 +2372,10 @@ function GanttRow({
               summary.resourceDemands
             );
 
-            const resourceDemandIcons =
-  formatResourceDemandIcons(
-    summary.resourceDemands
-  );
+          const resourceDemandIcons =
+            formatResourceDemandIcons(
+              summary.resourceDemands
+            );
           return (
             <React.Fragment key={summary.id}>
               {overlays.resources &&
@@ -2367,12 +2392,12 @@ function GanttRow({
                     }}
                   >
                     <span
-  title={
-    formattedResourceDemands
-  }
->
-  {resourceDemandIcons}
-</span>
+                      title={
+                        formattedResourceDemands
+                      }
+                    >
+                      {resourceDemandIcons}
+                    </span>
                   </div>
                 )}
 
@@ -2496,12 +2521,12 @@ function GanttRow({
             }}
           >
             <span
-  title={
-    formattedResourceDemands
-  }
->
-  {resourceDemandIcons}
-</span>
+              title={
+                formattedResourceDemands
+              }
+            >
+              {resourceDemandIcons}
+            </span>
           </div>
         )}
 
@@ -3652,7 +3677,10 @@ function ResourceDescription({
           )
         }
       >
-        {expanded ? '▼' : '▶'}{' '}
+        <ExpandIcon
+          expanded={expanded}
+        />
+        {' '}
         {resource.label}
 
         <span className="ml-2 font-normal text-slate-500">
@@ -4305,7 +4333,9 @@ function ResourcesPanel({
             )
           }
         >
-          {open ? '▼' : '▶'}{' '}
+          <ExpandIcon
+            expanded={open}
+          />{' '}
           Resources
         </button>
 
