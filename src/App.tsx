@@ -29,62 +29,66 @@ const DEFAULT_COLUMNS = [
   {
     key: 'description',
     label: 'Description',
-    width: 260,
+    shortLabel: 'Desc',
+    width: 300,
     render: DescriptionCell,
   },
   {
     key: 'action',
     label: 'Action',
-    width: 170,
+    shortLabel: 'Act',
+    width: 120,
     render: ActionCell,
   },
   {
     key: 'asset',
     label: 'Asset',
-    width: 70,
+    width: 60,
     render: AssetCell,
   },
   {
     key: 'priority',
     label: 'Priority',
     shortLabel: 'Pri',
-    width: 105,
+    width: 100,
     render: PriorityCell,
   },
   {
     key: 'availability',
     label: 'Material Availability',
     shortLabel: 'Mat',
-    width: 150,
+    width: 140,
     render: AvailabilityCell,
   },
   {
     key: 'forecast',
     label: 'Forecast',
-    width: 125,
+    width: 100,
     render: ForecastCell,
   },
   {
     key: 'start',
     label: 'Start',
-    width: 125,
+    width: 160,
     render: StartCell,
   },
   {
     key: 'end',
     label: 'End',
-    width: 125,
+    width: 160,
     render: EndCell,
   },
   {
     key: 'duration',
     label: 'Duration',
-    width: 90,
+    shortLabel: 'Dur',
+    width: 70,
     render: DurationCell,
   },
   {
     key: 'resources',
     label: 'Resources',
+    shortLabel: 'Res',
     width: 100,
     render: ResourcesCell,
   },
@@ -320,6 +324,35 @@ function formatResourceDemands(
         )}x ${demand.resourceCode}`
     )
     .join(', ');
+}
+
+function formatResourceDemandIcons(
+  resourceDemands = []
+) {
+  return resourceDemands
+    .map((demand) => {
+      const resource =
+        resourceDefinitionByCode[
+          demand.resourceCode
+        ];
+
+      const emoji =
+        resource?.emoji ?? '❓';
+
+      const quantity =
+        Math.round(
+          demand.quantity
+        );
+
+      if (quantity <= 2) {
+        return emoji.repeat(
+          quantity
+        );
+      }
+
+      return `${emoji}×${quantity}`;
+    })
+    .join('');
 }
 
 function calculateResourceSeries(
@@ -1647,15 +1680,39 @@ function ForecastCell({ row }) {
   );
 }
 
-function ResourcesCell({ row }) {
+function ResourcesCell({
+  row,
+  column,
+}) {
   const resourceDemands =
     getRowResourceDemands(row);
 
+  const showText =
+    column.width >= COMPACT_WIDTH;
+
   return (
-    <div className="flex items-center whitespace-nowrap border-r px-2">
-      {formatResourceDemands(
+    <div
+      className="flex items-center whitespace-nowrap border-r px-2"
+      title={formatResourceDemands(
         resourceDemands
       )}
+    >
+      {showText
+        ? resourceDemands
+            .map((demand) => {
+              const resource =
+                resourceDefinitionByCode[
+                  demand.resourceCode
+                ];
+
+              return `${formatResourceQuantity(
+                demand.quantity
+              )}x ${demand.resourceCode}${resource?.emoji ?? ''}`;
+            })
+            .join(', ')
+        : formatResourceDemandIcons(
+            resourceDemands
+          )}
     </div>
   );
 }
@@ -2260,6 +2317,10 @@ function GanttRow({
       getRowResourceDemands(row)
     );
 
+    const resourceDemandIcons =
+    formatResourceDemandIcons(
+      getRowResourceDemands(row)
+    );
   return (
     <div
       className={`relative ${height} border-b border-slate-200 bg-white`}
@@ -2286,6 +2347,10 @@ function GanttRow({
               summary.resourceDemands
             );
 
+            const resourceDemandIcons =
+  formatResourceDemandIcons(
+    summary.resourceDemands
+  );
           return (
             <React.Fragment key={summary.id}>
               {overlays.resources &&
@@ -2301,7 +2366,13 @@ function GanttRow({
                       )`,
                     }}
                   >
-                    {formattedResourceDemands}
+                    <span
+  title={
+    formattedResourceDemands
+  }
+>
+  {resourceDemandIcons}
+</span>
                   </div>
                 )}
 
@@ -2424,7 +2495,13 @@ function GanttRow({
         )`,
             }}
           >
-            {formattedResourceDemands}
+            <span
+  title={
+    formattedResourceDemands
+  }
+>
+  {resourceDemandIcons}
+</span>
           </div>
         )}
 
