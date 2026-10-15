@@ -273,16 +273,39 @@ const formatDuration = (minutes) => {
   return `${remainder}m`;
 };
 
-function parseResourceDemand(value) {
-  if (!value) return [];
-  return value
-    .split(/[;,]+/)
-    .map((part) => part.trim().match(/^(\d+)\s*x?\s*([A-Za-z0-9_-]+)$/i))
-    .filter(Boolean)
-    .map((match) => ({
-      count: Number(match[1]),
-      code: match[2].toUpperCase(),
-    }));
+function getResourceDemands(item) {
+  return item.resourceRequirements ?? [];
+}
+
+function getRowResourceDemands(row) {
+  return (
+    row.resourceDemands ??
+    row.resourceRequirements ??
+    []
+  );
+}
+
+function formatResourceQuantity(
+  quantity
+) {
+  return Number.isInteger(quantity)
+    ? String(quantity)
+    : quantity
+      .toFixed(2)
+      .replace(/\.?0+$/, '');
+}
+
+function formatResourceDemands(
+  resourceDemands = []
+) {
+  return resourceDemands
+    .map(
+      (demand) =>
+        `${formatResourceQuantity(
+          demand.quantity
+        )}x ${demand.resourceCode}`
+    )
+    .join(', ');
 }
 
 function calculateResourceSeries(
@@ -302,7 +325,8 @@ function calculateResourceSeries(
     const resourceCapacityIntervals =
       capacityIntervals.filter(
         (interval) =>
-          interval.resourceCode === resource.code &&
+          interval.resourceCode ===
+          resource.resourceCode &&
           interval.endMs > rangeStartMs &&
           interval.startMs < rangeEndMs
       );
@@ -356,7 +380,8 @@ function calculateResourceSeries(
     const intervals = markers
       .slice(0, -1)
       .map((startMs, index) => {
-        const endMs = markers[index + 1];
+        const endMs =
+          markers[index + 1];
 
         const contributors =
           allocatedTimed.flatMap((item) => {
@@ -372,18 +397,18 @@ function calculateResourceSeries(
             }
 
             const demand =
-              parseResourceDemand(
-                item.resourceDemand
-              ).find(
+              getResourceDemands(item).find(
                 (entry) =>
-                  entry.code === resource.code
+                  entry.resourceCode ===
+                  resource.resourceCode
               );
 
             return demand
               ? [
                 {
                   id: item.id,
-                  count: demand.count,
+                  quantity:
+                    demand.quantity,
                 },
               ]
               : [];
@@ -403,20 +428,24 @@ function calculateResourceSeries(
         return {
           startMs,
           endMs,
-          count: contributors.reduce(
-            (sum, contributor) =>
-              sum + contributor.count,
-            0
-          ),
+          quantity:
+            contributors.reduce(
+              (sum, contributor) =>
+                sum +
+                contributor.quantity,
+              0
+            ),
           capacity:
-            capacityInterval?.capacity ?? 0,
+            capacityInterval?.capacity ??
+            0,
           hasCapacityData,
           contributors,
         };
       })
       .filter(
         (interval) =>
-          interval.endMs > interval.startMs
+          interval.endMs >
+          interval.startMs
       );
 
     return {
@@ -424,6 +453,56 @@ function calculateResourceSeries(
       intervals,
     };
   });
+}
+
+function calculatePeakResourceDemands(
+  items
+) {
+  const timedItems = items.filter(
+    (item) =>
+      item.startMs != null &&
+      item.durationMinutes != null
+  );
+
+  if (timedItems.length === 0) {
+    return [];
+  }
+
+  const rangeStartMs = Math.min(
+    ...timedItems.map(
+      (item) => item.startMs
+    )
+  );
+
+  const rangeEndMs = Math.max(
+    ...timedItems.map(
+      (item) =>
+        item.startMs +
+        item.durationMinutes * MINUTE
+    )
+  );
+
+  return calculateResourceSeries(
+    timedItems,
+    [],
+    rangeStartMs,
+    rangeEndMs
+  )
+    .map((resource) => ({
+      resourceCode:
+        resource.resourceCode,
+      quantity: Math.max(
+        0,
+        ...resource.intervals.map(
+          (interval) =>
+            interval.quantity
+        )
+      ),
+    }))
+    .filter(
+      (demand) =>
+        demand.quantity > 0
+    );
 }
 
 function applyState(allocation, schedule) {
@@ -511,25 +590,10 @@ function deriveRows(
               availability != null
           );
 
-        const resourceDemand =
-          calculateResourceSeries(allocated)
-            .map((resource) => ({
-              code: resource.code,
-              peak: Math.max(
-                0,
-                ...resource.intervals.map(
-                  (interval) => interval.count
-                )
-              ),
-            }))
-            .filter(
-              (resource) => resource.peak > 0
-            )
-            .map(
-              (resource) =>
-                `${resource.peak}x ${resource.code}`
-            )
-            .join(', ');
+        const resourceDemands =
+          calculatePeakResourceDemands(
+            allocated
+          );
 
         return {
           id: stoppage.id,
@@ -547,7 +611,7 @@ function deriveRows(
             availabilities.length > 0
               ? Math.max(...availabilities)
               : null,
-          resourceDemand,
+          resourceDemands,
         };
       })
       .filter(Boolean);
@@ -655,25 +719,10 @@ function deriveRows(
         )
         : null;
 
-      const peakResourceDemand =
-        calculateResourceSeries(allocated)
-          .map((resource) => ({
-            code: resource.code,
-            peak: Math.max(
-              0,
-              ...resource.intervals.map(
-                (interval) => interval.count
-              )
-            ),
-          }))
-          .filter(
-            (resource) => resource.peak > 0
-          )
-          .map(
-            (resource) =>
-              `${resource.peak}x ${resource.code}`
-          )
-          .join(', ');
+      const resourceDemands =
+        calculatePeakResourceDemands(
+          allocated
+        );
 
       const allocatedPriorities = allocated
         .map((item) => item.priority)
@@ -747,8 +796,7 @@ function deriveRows(
               (finishMs - startMs) /
               MINUTE
             ),
-        resourceDemand:
-          peakResourceDemand,
+        resourceDemands,
         forecastMarkers:
           stoppageForecastMarkers,
         barClass:
@@ -1474,9 +1522,14 @@ function ForecastCell({ row }) {
 }
 
 function ResourcesCell({ row }) {
+  const resourceDemands =
+    getRowResourceDemands(row);
+
   return (
     <div className="flex items-center whitespace-nowrap border-r px-2">
-      {row.resourceDemand ?? ''}
+      {formatResourceDemands(
+        resourceDemands
+      )}
     </div>
   );
 }
@@ -2074,6 +2127,11 @@ function GanttRow({
       ? row.stoppageSummaries ?? []
       : [];
 
+  const formattedResourceDemands =
+    formatResourceDemands(
+      getRowResourceDemands(row)
+    );
+
   return (
     <div
       className={`relative ${height} border-b border-slate-200 bg-white`}
@@ -2095,10 +2153,15 @@ function GanttRow({
             summary.availability
             ];
 
+          const formattedResourceDemands =
+            formatResourceDemands(
+              summary.resourceDemands
+            );
+
           return (
             <React.Fragment key={summary.id}>
               {overlays.resources &&
-                summary.resourceDemand && (
+                formattedResourceDemands && (
                   <div
                     className="absolute top-1/2 -translate-y-1/2 z-30 whitespace-nowrap text-[10px] text-red-700 text-right"
                     style={{
@@ -2110,7 +2173,7 @@ function GanttRow({
                       )`,
                     }}
                   >
-                    {summary.resourceDemand}
+                    {formattedResourceDemands}
                   </div>
                 )}
 
@@ -2208,20 +2271,20 @@ function GanttRow({
 
       {overlays.resources &&
         row.type !== 'asset' &&
-        row.resourceDemand &&
+        formattedResourceDemands &&
         row.startMs != null && (
           <div
-            className="absolute top-1/2 -translate-y-1/2 z-20 whitespace-nowrap text-[10px] text-red-700 text-right"
+            className="absolute top-1/2 z-20 whitespace-nowrap text-right text-[10px] text-red-700 -translate-y-1/2"
             style={{
               left: 0,
               right: `calc(
-                100% -
-                ${leftAt(row.startMs)}
-                + 8px
-              )`,
+          100% -
+          ${leftAt(row.startMs)}
+          + 8px
+        )`,
             }}
           >
-            {row.resourceDemand}
+            {formattedResourceDemands}
           </div>
         )}
 
@@ -3327,14 +3390,16 @@ function ResourceDescription({
   const peakDemand = Math.max(
     0,
     ...resource.intervals.map(
-      (interval) => interval.count
+      (interval) =>
+        interval.quantity
     )
   );
 
   const peakCapacity = Math.max(
     0,
     ...resource.intervals.map(
-      (interval) => interval.capacity
+      (interval) =>
+        interval.capacity
     )
   );
 
@@ -3350,14 +3415,24 @@ function ResourceDescription({
         } border-b border-slate-200 px-2 py-2 text-xs font-semibold`}
     >
       <button
-        onClick={() => toggle(resource.code)}
+        onClick={() =>
+          toggle(
+            resource.resourceCode
+          )
+        }
       >
         {expanded ? '▼' : '▶'}{' '}
         {resource.label}
 
         <span className="ml-2 font-normal text-slate-500">
-          peak demand {peakDemand} / peak capacity{' '}
-          {peakCapacity}
+          peak demand{' '}
+          {formatResourceQuantity(
+            peakDemand
+          )}{' '}
+          / peak capacity{' '}
+          {formatResourceQuantity(
+            peakCapacity
+          )}
         </span>
 
         {hasMissingCapacity && (
@@ -3387,7 +3462,7 @@ function ResourceGraph({
     1,
     ...resource.intervals.flatMap(
       (interval) => [
-        interval.count,
+        interval.quantity,
         interval.capacity,
       ]
     )
@@ -3402,146 +3477,161 @@ function ResourceGraph({
       <TimelineGrid />
 
       {expanded &&
-        resource.intervals.map((interval) => {
-          const overCapacity =
-            interval.count >
-            interval.capacity;
+        resource.intervals.map(
+          (interval) => {
+            const overCapacity =
+              interval.quantity >
+              interval.capacity;
 
-          const overCapacityAmount =
-            Math.max(
-              0,
-              interval.count -
-              interval.capacity
+            const overCapacityAmount =
+              Math.max(
+                0,
+                interval.quantity -
+                interval.capacity
+              );
+
+            const missingCapacity =
+              !interval.hasCapacityData;
+
+            const tooltip = [
+              `${formatFullDateTime(
+                interval.startMs
+              )} to ${formatFullDateTime(
+                interval.endMs
+              )}`,
+              `${resource.resourceCode
+              } demand: ${formatResourceQuantity(
+                interval.quantity
+              )}`,
+              `${resource.resourceCode
+              } capacity: ${formatResourceQuantity(
+                interval.capacity
+              )}`,
+              overCapacity
+                ? `Over capacity: ${formatResourceQuantity(
+                  overCapacityAmount
+                )}`
+                : 'Within capacity',
+              missingCapacity
+                ? 'Warning: no capacity data entered. Effective capacity is 0.'
+                : null,
+              interval.contributors
+                .length > 0
+                ? `Orders: ${interval.contributors
+                  .map(
+                    (contributor) =>
+                      contributor.id
+                  )
+                  .join(', ')}`
+                : 'Orders: none',
+            ]
+              .filter(Boolean)
+              .join('\n');
+
+            const intervalWidth =
+              interval.endMs -
+              interval.startMs;
+
+            const demandHeight =
+              interval.quantity === 0
+                ? 0
+                : Math.max(
+                  3,
+                  (interval.quantity /
+                    maxLevel) *
+                  76
+                );
+
+            const capacityHeight =
+              interval.capacity === 0
+                ? 0
+                : Math.max(
+                  2,
+                  (interval.capacity /
+                    maxLevel) *
+                  76
+                );
+
+            return (
+              <React.Fragment
+                key={`${interval.startMs}-${interval.endMs}`}
+              >
+                {missingCapacity && (
+                  <div
+                    className="absolute bottom-1 top-1 z-10 border border-amber-300 bg-amber-50/70"
+                    style={{
+                      left: leftAt(
+                        interval.startMs
+                      ),
+                      width: widthFor(
+                        intervalWidth
+                      ),
+                    }}
+                    title={tooltip}
+                  />
+                )}
+
+                {capacityHeight > 0 && (
+                  <div
+                    className="pointer-events-none absolute bottom-1 z-20 border-t-2 border-dashed border-slate-700"
+                    style={{
+                      left: leftAt(
+                        interval.startMs
+                      ),
+                      width: widthFor(
+                        intervalWidth
+                      ),
+                      height:
+                        `${capacityHeight}px`,
+                    }}
+                  />
+                )}
+
+                {demandHeight > 0 && (
+                  <div
+                    className="absolute bottom-1 z-30"
+                    style={{
+                      left: leftAt(
+                        interval.startMs
+                      ),
+                      width: widthFor(
+                        intervalWidth
+                      ),
+                      height:
+                        `${demandHeight}px`,
+                      backgroundColor:
+                        overCapacity
+                          ? '#dc2626'
+                          : resource.colour,
+                    }}
+                    title={tooltip}
+                  >
+                    <span className="absolute left-1 top-0 text-[9px] text-white">
+                      {formatResourceQuantity(
+                        interval.quantity
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                {demandHeight === 0 && (
+                  <div
+                    className="absolute bottom-1 z-30 h-2"
+                    style={{
+                      left: leftAt(
+                        interval.startMs
+                      ),
+                      width: widthFor(
+                        intervalWidth
+                      ),
+                    }}
+                    title={tooltip}
+                  />
+                )}
+              </React.Fragment>
             );
-
-          const missingCapacity =
-            !interval.hasCapacityData;
-
-          const tooltip = [
-            `${formatFullDateTime(
-              interval.startMs
-            )} to ${formatFullDateTime(
-              interval.endMs
-            )}`,
-            `${resource.code} demand: ${interval.count}`,
-            `${resource.code} capacity: ${interval.capacity}`,
-            overCapacity
-              ? `Over capacity: ${overCapacityAmount}`
-              : 'Within capacity',
-            missingCapacity
-              ? 'Warning: no capacity data entered. Effective capacity is 0.'
-              : null,
-            interval.contributors.length > 0
-              ? `Orders: ${interval.contributors
-                .map(
-                  (contributor) =>
-                    contributor.id
-                )
-                .join(', ')}`
-              : 'Orders: none',
-          ]
-            .filter(Boolean)
-            .join('\n');
-
-          const intervalWidth =
-            interval.endMs -
-            interval.startMs;
-
-          const demandHeight =
-            interval.count === 0
-              ? 0
-              : Math.max(
-                3,
-                (interval.count /
-                  maxLevel) *
-                76
-              );
-
-          const capacityHeight =
-            interval.capacity === 0
-              ? 0
-              : Math.max(
-                2,
-                (interval.capacity /
-                  maxLevel) *
-                76
-              );
-
-          return (
-            <React.Fragment
-              key={`${interval.startMs}-${interval.endMs}`}
-            >
-              {missingCapacity && (
-                <div
-                  className="absolute bottom-1 top-1 z-10 border border-amber-300 bg-amber-50/70"
-                  style={{
-                    left: leftAt(
-                      interval.startMs
-                    ),
-                    width: widthFor(
-                      intervalWidth
-                    ),
-                  }}
-                  title={tooltip}
-                />
-              )}
-
-              {capacityHeight > 0 && (
-                <div
-                  className="pointer-events-none absolute bottom-1 z-20 border-t-2 border-dashed border-slate-700"
-                  style={{
-                    left: leftAt(
-                      interval.startMs
-                    ),
-                    width: widthFor(
-                      intervalWidth
-                    ),
-                    height: `${capacityHeight}px`,
-                  }}
-                />
-              )}
-
-              {demandHeight > 0 && (
-                <div
-                  className="absolute bottom-1 z-30"
-                  style={{
-                    left: leftAt(
-                      interval.startMs
-                    ),
-                    width: widthFor(
-                      intervalWidth
-                    ),
-                    height: `${demandHeight}px`,
-                    backgroundColor:
-                      overCapacity
-                        ? '#dc2626'
-                        : resource.colour,
-                  }}
-                  title={tooltip}
-                >
-                  <span className="absolute left-1 top-0 text-[9px] text-white">
-                    {interval.count}
-                  </span>
-                </div>
-              )}
-
-              {demandHeight === 0 && (
-                <div
-                  className="absolute bottom-1 z-30 h-2"
-                  style={{
-                    left: leftAt(
-                      interval.startMs
-                    ),
-                    width: widthFor(
-                      intervalWidth
-                    ),
-                  }}
-                  title={tooltip}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
+          }
+        )}
     </div>
   );
 }
@@ -3559,11 +3649,15 @@ function ResourcesPanel({
   const { width } =
     useTimelineGeometry();
 
-  const toggle = (code) => {
-    setExpandedResources((current) => ({
-      ...current,
-      [code]: !current[code],
-    }));
+  const toggle = (
+    resourceCode
+  ) => {
+    setExpandedResources(
+      (current) => ({
+        ...current,
+        [resourceCode]: !current[resourceCode],
+      })
+    );
   };
 
   return (
@@ -3585,10 +3679,14 @@ function ResourcesPanel({
         <button
           className="border-r px-2 text-left text-xs font-semibold"
           onClick={() =>
-            setOpen((current) => !current)
+            setOpen(
+              (current) =>
+                !current
+            )
           }
         >
-          {open ? '▼' : '▶'} Resources
+          {open ? '▼' : '▶'}{' '}
+          Resources
         </button>
 
         <div />
@@ -3607,11 +3705,14 @@ function ResourcesPanel({
               {resourceSeries.map(
                 (resource) => (
                   <ResourceDescription
-                    key={resource.code}
+                    key={
+                      resource.resourceCode
+                    }
                     resource={resource}
                     expanded={
                       expandedResources[
-                      resource.code
+                      resource
+                        .resourceCode
                       ]
                     }
                     toggle={toggle}
@@ -3626,23 +3727,30 @@ function ResourcesPanel({
                   timeline.resourcesRef
                 }
                 onScroll={
-                  timeline.onResourcesScroll
+                  timeline
+                    .onResourcesScroll
                 }
                 className="overflow-x-auto overflow-y-hidden"
               >
                 <div style={{ width }}>
                   {resourceSeries.map(
-                    (resource) => <ResourceGraph
-                      key={resource.code}
-                      resource={
-                        resource
-                      }
-                      expanded={
-                        expandedResources[
-                        resource.code
-                        ]
-                      }
-                    />
+                    (resource) => (
+                      <ResourceGraph
+                        key={
+                          resource
+                            .resourceCode
+                        }
+                        resource={
+                          resource
+                        }
+                        expanded={
+                          expandedResources[
+                          resource
+                            .resourceCode
+                          ]
+                        }
+                      />
+                    )
                   )}
                 </div>
               </div>
@@ -3710,7 +3818,7 @@ function ResourceCapacityScreen({
   const [capacities, setCapacities] = React.useState(() =>
     Object.fromEntries(
       resourceDefinitions.map((resource) => [
-        resource.code,
+        resource.resourceCode,
         {
           day: '',
           night: '',
@@ -3823,7 +3931,7 @@ function ResourceCapacityScreen({
 
         for (const resource of resourceDefinitions) {
           const input =
-            capacities[resource.code]?.[
+            capacities[resource.resourceCode]?.[
             shift.id
             ] ?? '';
 
@@ -3833,8 +3941,8 @@ function ResourceCapacityScreen({
               : Number(input);
 
           generated.push({
-            id: `${resource.code}-${intervalStartMs}-${shift.id}`,
-            resourceCode: resource.code,
+            id: `${resource.resourceCode}-${intervalStartMs}-${shift.id}`,
+            resourceCode: resource.resourceCode,
             startMs: intervalStartMs,
             endMs: intervalEndMs,
             capacity,
@@ -4219,12 +4327,12 @@ function ResourceCapacityScreen({
 
             {resourceDefinitions.map((resource) => (
               <div
-                key={resource.code}
+                key={resource.resourceCode}
                 className="grid grid-cols-[1fr_100px_100px] border-t border-slate-300 text-xs"
               >
                 <div className="border-r border-slate-300 px-2 py-2">
                   <div className="font-semibold">
-                    {resource.code}
+                    {resource.resourceCode}
                   </div>
 
                   <div className="text-[10px] text-slate-500">
@@ -4240,11 +4348,11 @@ function ResourceCapacityScreen({
                     className="w-full border border-slate-300 px-2 py-1 text-right"
                     placeholder="Blank"
                     value={
-                      capacities[resource.code]?.day ?? ''
+                      capacities[resource.resourceCode]?.day ?? ''
                     }
                     onChange={(event) =>
                       setCapacity(
-                        resource.code,
+                        resource.resourceCode,
                         'day',
                         event.target.value
                       )
@@ -4260,11 +4368,11 @@ function ResourceCapacityScreen({
                     className="w-full border border-slate-300 px-2 py-1 text-right"
                     placeholder="Blank"
                     value={
-                      capacities[resource.code]?.night ?? ''
+                      capacities[resource.resourceCode]?.night ?? ''
                     }
                     onChange={(event) =>
                       setCapacity(
-                        resource.code,
+                        resource.resourceCode,
                         'night',
                         event.target.value
                       )
@@ -4381,11 +4489,11 @@ function ResourceCapacityScreen({
 
                     {resourceDefinitions.map((resource) => (
                       <th
-                        key={resource.code}
+                        key={resource.resourceCode}
                         className="border-b border-r border-slate-300 px-2 py-2 text-center"
                         title={resource.label}
                       >
-                        {resource.code}
+                        {resource.resourceCode}
                       </th>
                     ))}
                   </tr>
@@ -4435,13 +4543,13 @@ function ResourceCapacityScreen({
 
                       {resourceDefinitions.map((resource) => {
                         const capacity =
-                          tableRow.capacities[resource.code];
+                          tableRow.capacities[resource.resourceCode];
 
                         const missing = capacity == null;
 
                         return (
                           <td
-                            key={resource.code}
+                            key={resource.resourceCode}
                             className={`border-b border-r border-slate-300 p-1 ${missing ? 'bg-amber-50' : ''
                               }`}
                             title={
@@ -4474,7 +4582,7 @@ function ResourceCapacityScreen({
                                   updateGeneratedCapacity(
                                     tableRow.startMs,
                                     tableRow.endMs,
-                                    resource.code,
+                                    resource.resourceCode,
                                     event.target.value
                                   )
                                 }

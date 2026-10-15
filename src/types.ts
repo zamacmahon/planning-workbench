@@ -17,6 +17,16 @@ export interface PriorityDefinition {
 }
 
 /**
+ * Resource demand used by the application.
+ */
+export interface ResourceDemand {
+  resourceCode: string;
+  quantity: number;
+}
+
+export type ResourceRequirement = ResourceDemand;
+
+/**
  * Work item as received from the imported source.
  *
  * This type contains no app-specific allocation or scheduling state.
@@ -96,13 +106,11 @@ export interface RawWorkItem {
   operationId: string | null;
 
   /**
-   * Resource-demand expression.
+   * Resource requirements imported for the operation.
    *
-   * Examples:
-   * "2x HDF"
-   * "2x HDF, 1x AUT"
+   * An operation may require multiple resources.
    */
-  resourceDemand: string;
+  resourceRequirements: ResourceRequirement[];
 }
 
 /**
@@ -126,9 +134,10 @@ export interface WorkItem
   WorkItemPlanningState { }
 
 export interface ResourceDefinition {
-  code: string;
+  resourceCode: string;
   label: string;
   colour: string;
+  emoji?: string;
 }
 
 export interface ResourceCapacityInterval {
@@ -166,14 +175,12 @@ export interface ResourceCapacityInterval {
 export type ResourceCapacityState =
   ResourceCapacityInterval[];
 
-export interface ResourceDemand {
-  code: string;
-  count: number;
-}
-
+/**
+ * Contributor to a calculated resource interval.
+ */
 export interface ResourceContributor {
   id: string;
-  count: number;
+  quantity: number;
 }
 
 export interface ResourceInterval {
@@ -183,7 +190,7 @@ export interface ResourceInterval {
   /**
    * Resource demand during this interval.
    */
-  count: number;
+  quantity: number;
 
   /**
    * Effective available capacity.
@@ -224,7 +231,7 @@ export interface StoppageSummary {
   durationMinutes: number;
   priority: Priority | null;
   availability: Availability | null;
-  resourceDemand: string;
+  resourceDemands: ResourceDemand[];
 }
 
 export type PlanningRowType =
@@ -233,7 +240,9 @@ export type PlanningRowType =
   | 'allocated'
   | 'unallocatedHeader'
   | 'unallocated'
-  | 'topReason';
+  | 'topReason'
+  | 'assetUnallocatedHeader'
+  | 'assetUnallocated';
 
 export interface PlanningRow extends Partial<WorkItem> {
   id: string;
@@ -243,6 +252,7 @@ export interface PlanningRow extends Partial<WorkItem> {
   hasChildren?: boolean;
   description: string;
   asset: string;
+  resourceDemands?: ResourceDemand[];
   forecastMarkers?: ForecastMarker[];
   stoppageSummaries?: StoppageSummary[];
   orderKey?: string;

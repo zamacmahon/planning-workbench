@@ -13,7 +13,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: true,
     workOrderId: '4123456',
     operationId: '0010',
-    resourceDemand: '2x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '4123456-0020',
@@ -27,7 +32,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4123456',
     operationId: '0020',
-    resourceDemand: '1x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: '4123456-0030',
@@ -41,7 +51,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4123456',
     operationId: '0030',
-    resourceDemand: '2x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '4991234-0010',
@@ -55,7 +70,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: true,
     workOrderId: '4991234',
     operationId: '0010',
-    resourceDemand: '2x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '4776524-0010',
@@ -69,7 +89,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4776524',
     operationId: '0010',
-    resourceDemand: '2x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '4776524-0020',
@@ -83,7 +108,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4776524',
     operationId: '0020',
-    resourceDemand: '1x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: '4776628-0010',
@@ -97,7 +127,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4776628',
     operationId: '0010',
-    resourceDemand: '2x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '4776629-0010',
@@ -111,7 +146,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '4776629',
     operationId: '0010',
-    resourceDemand: '1x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: 'forecast-task-0010',
@@ -125,7 +165,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: null,
     operationId: '0010',
-    resourceDemand: '1x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: 'planner-reason-0010',
@@ -139,7 +184,7 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: null,
     operationId: '0010',
-    resourceDemand: '',
+    resourceRequirements: [],
   },
   {
     id: '5267001-0010',
@@ -153,7 +198,16 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: true,
     workOrderId: '5267001',
     operationId: '0010',
-    resourceDemand: '2x HDF, 1x AUT',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 2,
+      },
+      {
+        resourceCode: 'AUT',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: '5267001-0020',
@@ -167,7 +221,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '5267001',
     operationId: '0020',
-    resourceDemand: '1x AUT',
+    resourceRequirements: [
+      {
+        resourceCode: 'AUT',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: '5267014-0010',
@@ -181,7 +240,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '5267014',
     operationId: '0010',
-    resourceDemand: '1x BLM',
+    resourceRequirements: [
+      {
+        resourceCode: 'BLM',
+        quantity: 1,
+      },
+    ],
   },
   {
     id: '5388100-0010',
@@ -195,7 +259,12 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '5388100',
     operationId: '0010',
-    resourceDemand: '2x TYR',
+    resourceRequirements: [
+      {
+        resourceCode: 'TYR',
+        quantity: 2,
+      },
+    ],
   },
   {
     id: '5388100-0020',
@@ -209,6 +278,11 @@ export const workItems: RawWorkItem[] = [
     isStoppageReason: false,
     workOrderId: '5388100',
     operationId: '0020',
-    resourceDemand: '1x HDF',
+    resourceRequirements: [
+      {
+        resourceCode: 'HDF',
+        quantity: 1,
+      },
+    ],
   },
 ];
