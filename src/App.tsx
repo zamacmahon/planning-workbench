@@ -1247,6 +1247,27 @@ function useTimelineScroll({
   };
 }
 
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1 10c2-3 5-5 9-5s7 2 9 5c-2 3-5 5-9 5s-7-2-9-5z" />
+      <circle
+        cx="10"
+        cy="10"
+        r="2.5"
+      />
+    </svg>
+  );
+}
+
 function ExpandIcon({
   expanded,
 }) {
@@ -1470,6 +1491,7 @@ function EditableStoppageDescription({
   startEditing,
   finishEditing,
   renameStoppage,
+  scrollToTime,
 }) {
   const [draft, setDraft] = React.useState(
     row.description
@@ -1505,11 +1527,39 @@ function EditableStoppageDescription({
   if (!editing) {
     return (
       <div
-        className="min-w-0 flex-1 cursor-text truncate"
-        title="Double-click to rename"
-        onDoubleClick={startEditing}
+        className="min-w-0 flex flex-1 items-center gap-1"
       >
-        {row.description}
+        <div
+          className="min-w-0 truncate cursor-text"
+          title="Double-click to rename"
+          onDoubleClick={startEditing}
+        >
+          {row.description}
+        </div>
+
+        {row.startMs != null && (
+          <button
+            className="shrink-0 text-slate-500 hover:text-slate-900"
+            title="Scroll to stoppage"
+            onClick={(event) => {
+              event.stopPropagation();
+
+              scrollToTime(
+                row.startMs +
+                (
+                  (
+                    row.durationMinutes ??
+                    0
+                  ) *
+                  MINUTE
+                ) /
+                2
+              );
+            }}
+          >
+            <EyeIcon />
+          </button>
+        )}
       </div>
     );
   }
@@ -1695,10 +1745,30 @@ function PriorityCell({
   );
 }
 
-function ForecastCell({ row }) {
+function ForecastCell({
+  row,
+  scrollToTime,
+}) {
   return (
-    <div className="flex items-center whitespace-nowrap border-r px-2">
-      {formatDateTime(row.forecastMs)}
+    <div className="flex items-center gap-1 whitespace-nowrap border-r px-2">
+      {formatDateTime(
+        row.forecastMs
+      )}
+
+      {row.forecastMs != null && (
+        <button
+          className="shrink-0 text-slate-500 hover:text-slate-900"
+          title="Scroll to forecast"
+          onClick={(event) => {
+            event.stopPropagation();
+            scrollToTime(
+              row.forecastMs
+            );
+          }}
+        >
+          <EyeIcon />
+        </button>
+      )}
     </div>
   );
 }
@@ -1822,6 +1892,7 @@ function DescriptionCell({
   editingStoppageId,
   setEditingStoppageId,
   renameStoppage,
+  scrollToTime,
 }) {
   const reorderable = [
     'allocated',
@@ -1862,23 +1933,28 @@ function DescriptionCell({
       )}
 
       {row.type === 'stoppage' ? (
-        <EditableStoppageDescription
-          row={row}
-          editing={
-            editingStoppageId === row.id
-          }
-          startEditing={() =>
-            setEditingStoppageId(row.id)
-          }
-          finishEditing={() =>
-            setEditingStoppageId(null)
-          }
-          renameStoppage={
-            renameStoppage
-          }
-        />
+        <div className="min-w-0 flex flex-1 items-center">
+          <EditableStoppageDescription
+            row={row}
+            editing={
+              editingStoppageId === row.id
+            }
+            startEditing={() =>
+              setEditingStoppageId(row.id)
+            }
+            finishEditing={() =>
+              setEditingStoppageId(null)
+            }
+            renameStoppage={
+              renameStoppage
+            }
+            scrollToTime={
+              scrollToTime
+            }
+          />
+        </div>
       ) : (
-        <div className="min-w-0 flex-1 truncate">
+        <div className="min-w-0 flex flex-1 items-center gap-1 truncate">
           {row.type === 'unallocatedHeader' ||
             row.type ===
             'assetUnallocatedHeader' ? (
@@ -1902,6 +1978,28 @@ function DescriptionCell({
             </>
           ) : (
             row.description
+          )}
+          {row.startMs != null && (
+            <button
+              className="shrink-0 text-slate-500 hover:text-slate-900"
+              title="Scroll to scheduled work"
+              onClick={(event) => {
+                event.stopPropagation();
+                scrollToTime(
+                  row.startMs +
+                  (
+                    (
+                      row.durationMinutes ??
+                      0
+                    ) *
+                    MINUTE
+                  ) /
+                  2
+                );
+              }}
+            >
+              <EyeIcon />
+            </button>
           )}
         </div>
       )}
@@ -2031,6 +2129,7 @@ function TableRow({
   renameStoppage,
   setRowStart,
   setRowEnd,
+  scrollToTime,
 }) {
   const height = getHeight(row);
 
@@ -2060,6 +2159,7 @@ function TableRow({
     renameStoppage,
     setRowStart,
     setRowEnd,
+    scrollToTime,
   };
 
   return (
@@ -3100,6 +3200,7 @@ function ItemsPanel({
   setRowStart,
   setRowEnd,
   tablePaneWidth,
+  scrollToTime,
 }) {
   const { width } =
     useTimelineGeometry();
@@ -3594,6 +3695,9 @@ function ItemsPanel({
                   }
                   setRowStart={setRowStart}
                   setRowEnd={setRowEnd}
+                  scrollToTime={
+                    scrollToTime
+                  }
                 />
               ))}
             </div>
@@ -5522,6 +5626,51 @@ export default function PlanningGrid() {
     timelineGeometry.startMs,
     timelineGeometry.endMs
   );
+
+  const scrollToTime = (
+    targetMs
+  ) => {
+    const scroller =
+      timeline.itemsRef.current;
+
+    if (
+      !scroller ||
+      targetMs == null
+    ) {
+      return;
+    }
+
+    const targetPixel =
+      (
+        (targetMs -
+          timelineRange.startMs) /
+        HOUR
+      ) *
+      timelineRange.pixelsPerHour;
+
+    const nextScrollLeft =
+      targetPixel -
+      scroller.clientWidth / 2;
+
+    timeline.headerRef.current &&
+      (
+        timeline.headerRef.current.scrollLeft =
+        nextScrollLeft
+      );
+
+    timeline.itemsRef.current &&
+      (
+        timeline.itemsRef.current.scrollLeft =
+        nextScrollLeft
+      );
+
+    timeline.resourcesRef.current &&
+      (
+        timeline.resourcesRef.current.scrollLeft =
+        nextScrollLeft
+      );
+  };
+
   const resourceSeries =
     calculateResourceSeries(
       items,
@@ -5997,6 +6146,9 @@ export default function PlanningGrid() {
                   setRowEnd={setRowEnd}
                   tablePaneWidth={
                     tablePaneWidth
+                  }
+                  scrollToTime={
+                    scrollToTime
                   }
                 />
 
