@@ -3594,6 +3594,22 @@ function ItemsPanel({
     });
   };
 
+  const panTableHorizontal = (
+    deltaPixels
+  ) => {
+    if (!tableBodyRef.current) {
+      return;
+    }
+
+    tableBodyRef.current.scrollLeft +=
+      deltaPixels;
+
+    syncTableScroll(
+      tableBodyRef,
+      tableScrollbarRef
+    );
+  };
+
   const startColumnDrag = (
     event,
     columnKey
@@ -3988,13 +4004,25 @@ function ItemsPanel({
         >
           <div
             ref={tableBodyRef}
-            className="overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="h-full overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             onScroll={() =>
               syncTableScroll(
                 tableBodyRef,
                 tableScrollbarRef
               )
             }
+            onPointerDown={(event) => {
+              startGrabScroll(
+                event,
+                {
+                  panHorizontal:
+                    panTableHorizontal,
+                  verticalElement:
+                    itemsViewportRef.current,
+                  vertical: true,
+                }
+              );
+            }}
           >
             <div
               style={{
