@@ -1349,6 +1349,20 @@ function Config({ overlays, setOverlays }) {
         <label className="mb-2 flex gap-2">
           <input
             type="checkbox"
+            checked={
+              overlays.forecastDescriptions
+            }
+            onChange={() =>
+              toggle(
+                'forecastDescriptions'
+              )
+            }
+          />
+          Show Forecast Descriptions
+        </label>
+        <label className="mb-2 flex gap-2">
+          <input
+            type="checkbox"
             checked={overlays.resources}
             onChange={() => toggle('resources')}
           />
@@ -2913,8 +2927,13 @@ function GanttRow({
                 )}
 
               <button
-                className={`absolute top-1/2 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${forecastClass}`}
-                style={{
+                className={`absolute top-1/2 z-40 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border
+                ${row.type === 'asset'
+                    ? 'cursor-default'
+                    : 'cursor-pointer'
+                  }
+                ${forecastClass}`
+                } style={{
                   left: leftAt(forecastMs),
                 }}
                 title={tooltip}
@@ -2931,6 +2950,23 @@ function GanttRow({
               >
                 <ForecastCross />
               </button>
+              {overlays.forecastDescriptions &&
+                row.type === 'asset' &&
+                marker.isStoppageReason &&
+                marker.allocatedStoppageId == null &&
+                marker.description && (
+
+                  <div
+                    className="pointer-events-none absolute top-1/2 z-30 -translate-y-1/2 whitespace-nowrap px-1 text-[10px] text-slate-700"
+                    style={{
+                      left: `calc(${leftAt(
+                        forecastMs
+                      )} + 12px)`,
+                    }}
+                  >
+                    {marker.description}
+                  </div>
+                )}
             </React.Fragment>
           );
         })}
@@ -5648,6 +5684,7 @@ export default function PlanningGrid() {
   }, [timelineRange]);
   const [overlays, setOverlays] = React.useState({
     forecasts: true,
+    forecastDescriptions: true,
     resources: true,
     priorities: true,
     availability: true,
