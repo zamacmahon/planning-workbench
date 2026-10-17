@@ -3151,6 +3151,10 @@ function PaneResizeHandle({
   setTablePaneWidth,
 }) {
   const startResize = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
 
@@ -3251,6 +3255,10 @@ function PanelResizeHandle({
   setResourcesPanelHeight,
 }) {
   const startResize = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
 
@@ -3538,6 +3546,10 @@ function ItemsPanel({
   };
 
   const resize = (event, index) => {
+    if (event.button !== 0) {
+      return;
+    }
+
     event.preventDefault();
 
     const originX =
@@ -3767,9 +3779,13 @@ function ItemsPanel({
                       draggable={false}
                       className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
                       onPointerDown={(event) => {
+                        if (event.button !== 0) {
+                          return;
+                        }
+                      
                         event.preventDefault();
                         event.stopPropagation();
-
+                      
                         resize(
                           event,
                           index
@@ -6070,6 +6086,7 @@ export default function PlanningGrid() {
 
   const startDrag = (event, row) => {
     if (
+      event.button !== 0 ||
       row.startMs == null ||
       row.durationMinutes == null
     ) {
