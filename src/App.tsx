@@ -2066,19 +2066,19 @@ function ActionCell({
   setHoveredActionGroupKey,
 }) {
   const isWorkItem =
-  row.type === 'allocated' ||
-  row.type === 'unallocated' ||
-  row.type === 'assetUnallocated' ||
-  row.type === 'topReason';
+    row.type === 'allocated' ||
+    row.type === 'unallocated' ||
+    row.type === 'assetUnallocated' ||
+    row.type === 'topReason';
 
-const actionGroupKey =
-  !isWorkItem
-    ? null
-    : row.workOrderId
-      ? `order:${row.workOrderId}`
-      : row.id != null
-        ? `item:${row.id}`
-        : null;
+  const actionGroupKey =
+    !isWorkItem
+      ? null
+      : row.workOrderId
+        ? `order:${row.workOrderId}`
+        : row.id != null
+          ? `item:${row.id}`
+          : null;
 
   const groupHighlighted =
     actionGroupKey != null &&
@@ -2166,6 +2166,7 @@ const actionGroupKey =
 
 function TableRow({
   row,
+  flashed,
   hoveredActionGroupKey,
   setHoveredActionGroupKey,
   columns,
@@ -2219,9 +2220,11 @@ function TableRow({
 
   return (
     <div
-      className={`grid ${height} border-b border-slate-200 text-xs ${isGroupingHeader
-        ? 'bg-slate-100'
-        : ''
+      className={`grid ${height} border-b border-slate-200 text-xs transition-colors duration-700 ${flashed
+        ? 'bg-yellow-100'
+        : isGroupingHeader
+          ? 'bg-slate-100'
+          : ''
         }`}
       style={{
         gridTemplateColumns: template,
@@ -2447,6 +2450,8 @@ function getBarClass(row) {
 
 function GanttRow({
   row,
+  flashed,
+  flashedRowIds,
   overlays,
   startDrag,
   moveToForecast,
@@ -2559,7 +2564,9 @@ function GanttRow({
                 )}
 
               <div
-                className="absolute top-1/2 -translate-y-1/2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white"
+                className={`absolute top-1/2 -translate-y-1/2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white transition-[box-shadow] duration-700
+                  ${flashedRowIds.has(summary.id) ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white' : ''}`
+                }
                 style={{
                   left: leftAt(
                     summary.startMs
@@ -2691,7 +2698,9 @@ function GanttRow({
         row.startMs != null &&
         durationMs != null && (
           <div
-            className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold ${getBarClass(row)}`}
+            className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold transition-[box-shadow] duration-700 ${getBarClass(row)}
+              ${flashed ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white' : ''}`
+            }
             style={{
               left: leftAt(row.startMs),
               width: widthFor(durationMs),
@@ -2722,7 +2731,7 @@ function GanttRow({
             }
             onDoubleClick={(event) => {
               event.stopPropagation();
-            
+
               if (
                 row.type === 'unallocated' &&
                 row.stoppageId
@@ -2730,7 +2739,7 @@ function GanttRow({
                 allocate(row);
                 return;
               }
-            
+
               if (row.type === 'allocated') {
                 remove(row);
               }
@@ -3251,6 +3260,7 @@ function PanelResizeHandle({
 
 function ItemsPanel({
   rows,
+  flashedRowIds,
   hoveredActionGroupKey,
   setHoveredActionGroupKey,
   overlays,
@@ -3745,6 +3755,11 @@ function ItemsPanel({
                 <TableRow
                   key={`table-${row.rowKey}`}
                   row={row}
+                  flashed={
+                    flashedRowIds.has(
+                      row.id
+                    )
+                  }
                   hoveredActionGroupKey={
                     hoveredActionGroupKey
                   }
@@ -3798,6 +3813,14 @@ function ItemsPanel({
                     allocate={allocate}
                     remove={remove}
                     row={row}
+                    flashed={
+                      flashedRowIds.has(
+                        row.id
+                      )
+                    }
+                    flashedRowIds={
+                      flashedRowIds
+                    }
                     overlays={
                       overlays
                     }
@@ -5627,6 +5650,94 @@ export default function PlanningGrid() {
   ] = React.useState(null);
 
   const [
+    flashedRowIds,
+    setFlashedRowIds,
+  ] = React.useState(
+    new Set()
+  );
+
+  const flashTimeoutsRef =
+    React.useRef(
+      new Map()
+    );
+
+  const flashRows = (
+    rowIds
+  ) => {
+    const ids = [
+      ...new Set(
+        rowIds.filter(Boolean)
+      ),
+    ];
+
+    if (ids.length === 0) {
+      return;
+    }
+
+    setFlashedRowIds(
+      (current) => {
+        const next =
+          new Set(current);
+
+        for (const id of ids) {
+          next.add(id);
+        }
+
+        return next;
+      }
+    );
+
+    for (const id of ids) {
+      const existingTimeout =
+        flashTimeoutsRef.current.get(
+          id
+        );
+
+      if (existingTimeout != null) {
+        window.clearTimeout(
+          existingTimeout
+        );
+      }
+
+      const timeout =
+        window.setTimeout(() => {
+          setFlashedRowIds(
+            (current) => {
+              const next =
+                new Set(current);
+
+              next.delete(id);
+
+              return next;
+            }
+          );
+
+          flashTimeoutsRef.current.delete(
+            id
+          );
+        }, 1200);
+
+      flashTimeoutsRef.current.set(
+        id,
+        timeout
+      );
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      for (
+        const timeout of
+        flashTimeoutsRef.current.values()
+      ) {
+        window.clearTimeout(
+          timeout
+        );
+      }
+    };
+  }, []);
+
+  const [
     resourceInteraction,
     setResourceInteraction,
   ] = React.useState<
@@ -5961,6 +6072,10 @@ export default function PlanningGrid() {
         [`${stoppageId}-unallocated`]: true,
       }));
 
+      flashRows([
+        stoppageId,
+      ]);
+
       return;
     }
 
@@ -6008,6 +6123,13 @@ export default function PlanningGrid() {
         [`${stoppageId}-unallocated`]: true,
       }));
 
+      flashRows([
+        stoppageId,
+        ...groupedItems.map(
+          (item) => item.id
+        ),
+      ]);
+
       return;
     }
 
@@ -6035,6 +6157,12 @@ export default function PlanningGrid() {
 
         return next;
       });
+
+      flashRows(
+        groupedItems.map(
+          (item) => item.id
+        )
+      );
     }
   };
 
@@ -6065,12 +6193,29 @@ export default function PlanningGrid() {
 
       return next;
     });
+
+    flashRows(
+      groupedItems.map(
+        (item) => item.id
+      )
+    );
   };
 
   const deleteStoppage = (row) => {
     if (row.type !== 'stoppage') {
       return;
     }
+
+    const releasedItemIds =
+      items
+        .filter(
+          (item) =>
+            item.allocatedStoppageId ===
+            row.id
+        )
+        .map(
+          (item) => item.id
+        );
 
     setAllocation((current) => {
       const next = { ...current };
@@ -6103,12 +6248,14 @@ export default function PlanningGrid() {
 
     setOrders((current) => {
       const next = { ...current };
-
       delete next[`allocated:${row.id}`];
       delete next[`unallocated:${row.id}`];
-
       return next;
     });
+
+    flashRows(
+      releasedItemIds
+    );
   };
 
   const setRowStart = (
@@ -6244,6 +6391,9 @@ export default function PlanningGrid() {
 
                 <ItemsPanel
                   rows={rows}
+                  flashedRowIds={
+                    flashedRowIds
+                  }
                   hoveredActionGroupKey={
                     hoveredActionGroupKey
                   }
