@@ -2452,6 +2452,8 @@ function GanttRow({
   moveToForecast,
   startResourceHover,
   finishResourceHover,
+  allocate,
+  remove,
 }) {
   const {
     width,
@@ -2718,6 +2720,21 @@ function GanttRow({
             onPointerDown={(event) =>
               startDrag(event, row)
             }
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+            
+              if (
+                row.type === 'unallocated' &&
+                row.stoppageId
+              ) {
+                allocate(row);
+                return;
+              }
+            
+              if (row.type === 'allocated') {
+                remove(row);
+              }
+            }}
           >
             {formatDuration(
               row.durationMinutes
@@ -3778,6 +3795,8 @@ function ItemsPanel({
                 {rows.map((row) => (
                   <GanttRow
                     key={`gantt-${row.rowKey}`}
+                    allocate={allocate}
+                    remove={remove}
                     row={row}
                     overlays={
                       overlays
