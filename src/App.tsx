@@ -2166,6 +2166,10 @@ function ActionCell({
 
 function TableRow({
   row,
+  hovered,
+  setHoveredRowId,
+  startResourceHover,
+  finishResourceHover,
   flashed,
   hoveredActionGroupKey,
   setHoveredActionGroupKey,
@@ -2220,14 +2224,35 @@ function TableRow({
 
   return (
     <div
-      className={`grid ${height} border-b border-slate-200 text-xs transition-colors duration-700 ${flashed
-        ? 'bg-yellow-100'
-        : isGroupingHeader
-          ? 'bg-slate-100'
-          : ''
-        }`}
+      className={`grid ${height} border-b border-slate-200 text-xs transition-colors duration-150
+        ${flashed ? 'bg-yellow-100'
+          : hovered ? 'bg-sky-50'
+            : isGroupingHeader ? 'bg-slate-100'
+              : ''}`
+      }
       style={{
         gridTemplateColumns: template,
+      }}
+      onPointerEnter={() => {
+        setHoveredRowId(
+          row.id
+        );
+
+        startResourceHover(
+          row
+        );
+      }}
+      onPointerLeave={() => {
+        setHoveredRowId(
+          (current) =>
+            current === row.id
+              ? null
+              : current
+        );
+
+        finishResourceHover(
+          row
+        );
       }}
     >
       {columns.map((column) => {
@@ -2450,6 +2475,9 @@ function getBarClass(row) {
 
 function GanttRow({
   row,
+  hovered,
+  hoveredRowId,
+  setHoveredRowId,
   flashed,
   flashedRowIds,
   overlays,
@@ -2565,7 +2593,14 @@ function GanttRow({
 
               <div
                 className={`absolute top-1/2 -translate-y-1/2 z-20 flex h-6 cursor-ew-resize select-none items-center justify-center rounded bg-cyan-800 px-1 text-[10px] font-semibold text-white transition-[box-shadow] duration-700
-                  ${flashedRowIds.has(summary.id) ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white' : ''}`
+                ${flashedRowIds.has(
+                  summary.id
+                )
+                    ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white'
+                    : hoveredRowId === summary.id
+                      ? 'ring-2 ring-sky-400 ring-offset-1 ring-offset-white'
+                      : ''
+                  }`
                 }
                 style={{
                   left: leftAt(
@@ -2585,18 +2620,29 @@ function GanttRow({
                     summaryDurationMs,
                   forecastMs: null,
                 })}
-                onPointerEnter={() =>
+                onPointerEnter={() => {
+                  setHoveredRowId(
+                    summary.id
+                  );
+
                   startResourceHover({
                     ...summary,
                     type: 'stoppage',
-                  })
-                }
-                onPointerLeave={() =>
+                  });
+                }}
+                onPointerLeave={() => {
+                  setHoveredRowId(
+                    (current) =>
+                      current === summary.id
+                        ? null
+                        : current
+                  );
+
                   finishResourceHover({
                     ...summary,
                     type: 'stoppage',
-                  })
-                }
+                  });
+                }}
                 onPointerDown={(event) =>
                   startDrag(event, {
                     ...summary,
@@ -2699,7 +2745,12 @@ function GanttRow({
         durationMs != null && (
           <div
             className={`absolute top-1/2 z-20 flex h-6 -translate-y-1/2 cursor-ew-resize select-none items-center justify-center rounded text-[10px] font-semibold transition-[box-shadow] duration-700 ${getBarClass(row)}
-              ${flashed ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white' : ''}`
+            ${flashed
+                ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white'
+                : hovered
+                  ? 'ring-2 ring-sky-400 ring-offset-1 ring-offset-white'
+                  : ''
+              }`
             }
             style={{
               left: leftAt(row.startMs),
@@ -2720,12 +2771,27 @@ function GanttRow({
                   ? null
                   : row.forecastMs ?? null,
             })}
-            onPointerEnter={() =>
-              startResourceHover(row)
-            }
-            onPointerLeave={() =>
-              finishResourceHover(row)
-            }
+            onPointerEnter={() => {
+              setHoveredRowId(
+                row.id
+              );
+
+              startResourceHover(
+                row
+              );
+            }}
+            onPointerLeave={() => {
+              setHoveredRowId(
+                (current) =>
+                  current === row.id
+                    ? null
+                    : current
+              );
+
+              finishResourceHover(
+                row
+              );
+            }}
             onPointerDown={(event) =>
               startDrag(event, row)
             }
@@ -3260,6 +3326,8 @@ function PanelResizeHandle({
 
 function ItemsPanel({
   rows,
+  hoveredRowId,
+  setHoveredRowId,
   flashedRowIds,
   hoveredActionGroupKey,
   setHoveredActionGroupKey,
@@ -3755,6 +3823,21 @@ function ItemsPanel({
                 <TableRow
                   key={`table-${row.rowKey}`}
                   row={row}
+                  hovered={
+                    hoveredRowId === row.id
+                  }
+                  setHoveredRowId={
+                    setHoveredRowId
+                  }
+                  hoveredRowId={
+                    hoveredRowId
+                  }
+                  startResourceHover={
+                    startResourceHover
+                  }
+                  finishResourceHover={
+                    finishResourceHover
+                  }
                   flashed={
                     flashedRowIds.has(
                       row.id
@@ -3813,6 +3896,12 @@ function ItemsPanel({
                     allocate={allocate}
                     remove={remove}
                     row={row}
+                    hovered={
+                      hoveredRowId === row.id
+                    }
+                    setHoveredRowId={
+                      setHoveredRowId
+                    }
                     flashed={
                       flashedRowIds.has(
                         row.id
@@ -5645,6 +5734,11 @@ export default function PlanningGrid() {
   );
 
   const [
+    hoveredRowId,
+    setHoveredRowId,
+  ] = React.useState(null);
+
+  const [
     hoveredActionGroupKey,
     setHoveredActionGroupKey,
   ] = React.useState(null);
@@ -6388,9 +6482,14 @@ export default function PlanningGrid() {
                     }
                   />
                 )}
-
                 <ItemsPanel
                   rows={rows}
+                  hoveredRowId={
+                    hoveredRowId
+                  }
+                  setHoveredRowId={
+                    setHoveredRowId
+                  }
                   flashedRowIds={
                     flashedRowIds
                   }
