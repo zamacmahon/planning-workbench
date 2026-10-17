@@ -664,6 +664,28 @@ function calculateResourcePreviewIntervals(
   return intervals;
 }
 
+function getWorkItemGroupKey(
+  item
+) {
+  return item.workOrderId
+    ? `order:${item.workOrderId}`
+    : `item:${item.id}`;
+}
+
+function getGroupedWorkItems(
+  item,
+  items
+) {
+  const groupKey =
+    getWorkItemGroupKey(item);
+
+  return items.filter(
+    (candidate) =>
+      getWorkItemGroupKey(candidate) ===
+      groupKey
+  );
+}
+
 function applyState(allocation, schedule) {
   return workItems.map((source) => {
     const scheduleEntry = schedule[source.id];
@@ -2040,73 +2062,102 @@ function ActionCell({
   allocate,
   remove,
   deleteStoppage,
+  hoveredActionGroupKey,
+  setHoveredActionGroupKey,
 }) {
+  const isWorkItem =
+  row.type === 'allocated' ||
+  row.type === 'unallocated' ||
+  row.type === 'assetUnallocated' ||
+  row.type === 'topReason';
+
+const actionGroupKey =
+  !isWorkItem
+    ? null
+    : row.workOrderId
+      ? `order:${row.workOrderId}`
+      : row.id != null
+        ? `item:${row.id}`
+        : null;
+
+  const groupHighlighted =
+    actionGroupKey != null &&
+    hoveredActionGroupKey ===
+    actionGroupKey;
+
+  const sharedActionProps =
+    actionGroupKey == null
+      ? {}
+      : {
+        onPointerEnter: () =>
+          setHoveredActionGroupKey(
+            actionGroupKey
+          ),
+        onPointerLeave: () =>
+          setHoveredActionGroupKey(
+            (current) =>
+              current ===
+                actionGroupKey
+                ? null
+                : current
+          ),
+      };
+
+  const actionClassName =
+    `inline-flex items-center text-sky-700 ${groupHighlighted
+      ? 'bg-sky-100'
+      : ''
+    }`;
+
+  // TODO: extract the button out as we may want multiple actions per cell
+  // and currently the key is the row type but it may be a composite key if more advanced predicates are required.
+  const actions = {
+    'asset': {
+      action: allocate,
+      symbol: '＋',
+      text: "Create Stoppage",
+    },
+    'assetUnallocated': {
+      action: allocate,
+      symbol: '＋',
+      text: "Create Stoppage with",
+    },
+    'allocated': {
+      action: remove,
+      symbol: '←',
+      text: "Remove from Stoppage",
+    },
+    'unallocated': {
+      action: allocate,
+      symbol: '→',
+      text: "Add to Stoppage",
+    },
+    'topReason': {
+      action: allocate,
+      symbol: '＋',
+      text: "Create Stoppage with",
+    },
+    'stoppage': {
+      action: deleteStoppage,
+      symbol: '×',
+      text: "Delete Stoppage",
+    },
+  }
+  const action = actions[row.type] ?? null;
   return (
     <div className="flex items-center overflow-hidden whitespace-nowrap border-r px-2 text-[11px]">
-      {row.type === 'asset' && (
+      {action && (
         <button
-          className="text-sky-700"
+          {...sharedActionProps}
+          className={actionClassName}
           onClick={() =>
-            allocate(row)
+            action.action(row)
           }
         >
-          [+] Create Stoppage
-        </button>
-      )}
-
-      {row.type ===
-        'assetUnallocated' && (
-          <button
-            className="text-sky-700"
-            onClick={() =>
-              allocate(row)
-            }
-          >
-            [+] Create Stoppage
-          </button>
-        )}
-
-      {row.type === 'allocated' && (
-        <button
-          className="text-sky-700"
-          onClick={() =>
-            remove(row)
-          }
-        >
-          [-] Remove from Stoppage
-        </button>
-      )}
-
-      {row.type === 'unallocated' && (
-        <button
-          className="text-sky-700"
-          onClick={() =>
-            allocate(row)
-          }
-        >
-          [+] Add to Stoppage
-        </button>
-      )}
-
-      {row.type === 'topReason' && (
-        <button
-          className="text-sky-700"
-          onClick={() =>
-            allocate(row)
-          }
-        >
-          [+] Create Stoppage
-        </button>
-      )}
-
-      {row.type === 'stoppage' && (
-        <button
-          className="text-sky-700"
-          onClick={() =>
-            deleteStoppage(row)
-          }
-        >
-          [-] Delete Stoppage
+          <span className="inline-flex h-4 w-4 items-center justify-center">
+            {action.symbol}
+          </span>
+          {action.text}
         </button>
       )}
     </div>
@@ -2115,6 +2166,8 @@ function ActionCell({
 
 function TableRow({
   row,
+  hoveredActionGroupKey,
+  setHoveredActionGroupKey,
   columns,
   template,
   expanded,
@@ -2146,6 +2199,8 @@ function TableRow({
 
   const cellProps = {
     row,
+    hoveredActionGroupKey,
+    setHoveredActionGroupKey,
     finishMs,
     expanded,
     toggle,
@@ -3179,6 +3234,8 @@ function PanelResizeHandle({
 
 function ItemsPanel({
   rows,
+  hoveredActionGroupKey,
+  setHoveredActionGroupKey,
   overlays,
   timeline,
   startResourceHover,
@@ -3671,6 +3728,12 @@ function ItemsPanel({
                 <TableRow
                   key={`table-${row.rowKey}`}
                   row={row}
+                  hoveredActionGroupKey={
+                    hoveredActionGroupKey
+                  }
+                  setHoveredActionGroupKey={
+                    setHoveredActionGroupKey
+                  }
                   columns={columns}
                   template={template}
                   expanded={
@@ -5540,6 +5603,11 @@ export default function PlanningGrid() {
   );
 
   const [
+    hoveredActionGroupKey,
+    setHoveredActionGroupKey,
+  ] = React.useState(null);
+
+  const [
     resourceInteraction,
     setResourceInteraction,
   ] = React.useState<
@@ -5884,6 +5952,12 @@ export default function PlanningGrid() {
       const stoppageId =
         `stop-${crypto.randomUUID()}`;
 
+      const groupedItems =
+        getGroupedWorkItems(
+          row,
+          items
+        );
+
       setStoppages((current) => ({
         ...current,
         [stoppageId]: {
@@ -5893,10 +5967,20 @@ export default function PlanningGrid() {
         },
       }));
 
-      setAllocation((current) => ({
-        ...current,
-        [row.id]: stoppageId,
-      }));
+      setAllocation((current) => {
+        const next = {
+          ...current,
+        };
+
+        for (
+          const item of groupedItems
+        ) {
+          next[item.id] =
+            stoppageId;
+        }
+
+        return next;
+      });
 
       setExpanded((current) => ({
         ...current,
@@ -5912,10 +5996,26 @@ export default function PlanningGrid() {
       row.type === 'unallocated' &&
       row.stoppageId
     ) {
-      setAllocation((current) => ({
-        ...current,
-        [row.id]: row.stoppageId,
-      }));
+      const groupedItems =
+        getGroupedWorkItems(
+          row,
+          items
+        );
+
+      setAllocation((current) => {
+        const next = {
+          ...current,
+        };
+
+        for (
+          const item of groupedItems
+        ) {
+          next[item.id] =
+            row.stoppageId;
+        }
+
+        return next;
+      });
     }
   };
 
@@ -5927,10 +6027,25 @@ export default function PlanningGrid() {
       return;
     }
 
-    setAllocation((current) => ({
-      ...current,
-      [row.id]: null,
-    }));
+    const groupedItems =
+      getGroupedWorkItems(
+        row,
+        items
+      );
+
+    setAllocation((current) => {
+      const next = {
+        ...current,
+      };
+
+      for (
+        const item of groupedItems
+      ) {
+        next[item.id] = null;
+      }
+
+      return next;
+    });
   };
 
   const deleteStoppage = (row) => {
@@ -6110,6 +6225,12 @@ export default function PlanningGrid() {
 
                 <ItemsPanel
                   rows={rows}
+                  hoveredActionGroupKey={
+                    hoveredActionGroupKey
+                  }
+                  setHoveredActionGroupKey={
+                    setHoveredActionGroupKey
+                  }
                   overlays={overlays}
                   timeline={timeline}
                   startResourceHover={
