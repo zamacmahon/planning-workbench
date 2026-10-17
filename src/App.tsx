@@ -1252,11 +1252,30 @@ function useTimelineScroll({
     extendIfRequired(sourceRef);
   };
 
+  const panHorizontal = (
+    deltaPixels
+  ) => {
+    const sourceRef =
+      itemsRef.current
+        ? itemsRef
+        : resourcesRef;
+
+    if (!sourceRef.current) {
+      return;
+    }
+
+    sourceRef.current.scrollLeft +=
+      deltaPixels;
+
+    sync(sourceRef);
+  };
+
   return {
     headerRef,
     itemsRef,
     resourcesRef,
     scrollLeft,
+    panHorizontal,
 
     onHeaderScroll: () =>
       sync(headerRef),
@@ -3146,6 +3165,111 @@ function TimelineControls({
   );
 }
 
+function startGrabScroll(
+  event,
+  {
+    panHorizontal = null,
+    verticalElement = null,
+    vertical = false,
+  }
+) {
+  if (event.button !== 1) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const originY =
+    event.clientY;
+
+  const originScrollTop =
+    verticalElement?.scrollTop ??
+    0;
+
+  let previousX =
+    event.clientX;
+
+  const previousCursor =
+    document.body.style.cursor;
+
+  const previousUserSelect =
+    document.body.style.userSelect;
+
+  document.body.style.cursor =
+    'grabbing';
+
+  document.body.style.userSelect =
+    'none';
+
+  const move = (moveEvent) => {
+    moveEvent.preventDefault();
+
+    if (panHorizontal) {
+      const deltaX =
+        previousX -
+        moveEvent.clientX;
+
+      previousX =
+        moveEvent.clientX;
+
+      panHorizontal(
+        deltaX
+      );
+    }
+
+    if (
+      vertical &&
+      verticalElement
+    ) {
+      verticalElement.scrollTop =
+        originScrollTop -
+        (
+          moveEvent.clientY -
+          originY
+        );
+    }
+  };
+
+  const finish = () => {
+    document.body.style.cursor =
+      previousCursor;
+
+    document.body.style.userSelect =
+      previousUserSelect;
+
+    window.removeEventListener(
+      'pointermove',
+      move
+    );
+
+    window.removeEventListener(
+      'pointerup',
+      finish
+    );
+
+    window.removeEventListener(
+      'pointercancel',
+      finish
+    );
+  };
+
+  window.addEventListener(
+    'pointermove',
+    move
+  );
+
+  window.addEventListener(
+    'pointerup',
+    finish
+  );
+
+  window.addEventListener(
+    'pointercancel',
+    finish
+  );
+}
+
 function PaneResizeHandle({
   tablePaneWidth,
   setTablePaneWidth,
@@ -3423,6 +3547,9 @@ function ItemsPanel({
     React.useRef(null);
 
   const tableBodyRef =
+    React.useRef(null);
+
+  const itemsViewportRef =
     React.useRef(null);
 
   const tableScrollLockRef =
@@ -3782,10 +3909,10 @@ function ItemsPanel({
                         if (event.button !== 0) {
                           return;
                         }
-                      
+
                         event.preventDefault();
                         event.stopPropagation();
-                      
+
                         resize(
                           event,
                           index
@@ -3848,7 +3975,10 @@ function ItemsPanel({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-x-hidden overflow-y-auto">
+      <div
+        ref={itemsViewportRef}
+        className="min-h-0 overflow-x-hidden overflow-y-auto"
+      >
         <div
           className="grid"
           style={{
@@ -3933,7 +4063,21 @@ function ItemsPanel({
             </div>
           </div>
 
-          <div className="min-w-0 overflow-hidden">
+          <div
+            className="min-w-0 overflow-hidden"
+            onPointerDown={(event) => {
+              startGrabScroll(
+                event,
+                {
+                  panHorizontal:
+                    timeline.panHorizontal,
+                  verticalElement:
+                    itemsViewportRef.current,
+                  vertical: true,
+                }
+              );
+            }}
+          >
             <div
               ref={timeline.itemsRef}
               onScroll={
@@ -4630,6 +4774,9 @@ function ResourcesPanel({
   setOpen,
   panelHeight,
 }) {
+  const resourcesViewportRef =
+    React.useRef(null);
+
   React.useLayoutEffect(() => {
     if (
       open &&
@@ -4693,7 +4840,10 @@ function ResourcesPanel({
       </div>
 
       {open && (
-        <div className="min-h-0 overflow-x-hidden overflow-y-auto">
+        <div
+          ref={resourcesViewportRef}
+          className="min-h-0 overflow-x-hidden overflow-y-auto"
+        >
           <div
             className="grid"
             style={{
@@ -4730,6 +4880,18 @@ function ResourcesPanel({
                   timeline
                     .onResourcesScroll
                 }
+                onPointerDown={(event) => {
+                  startGrabScroll(
+                    event,
+                    {
+                      panHorizontal:
+                        timeline.panHorizontal,
+                      verticalElement:
+                        resourcesViewportRef.current,
+                      vertical: true,
+                    }
+                  );
+                }}
                 className="overflow-x-auto overflow-y-hidden"
               >
                 <div style={{ width }}>
