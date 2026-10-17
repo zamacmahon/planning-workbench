@@ -3977,10 +3977,10 @@ function ItemsPanel({
 
       <div
         ref={itemsViewportRef}
-        className="min-h-0 overflow-x-hidden overflow-y-auto"
+        className="h-full min-h-0 overflow-x-hidden overflow-y-auto"
       >
         <div
-          className="grid"
+          className="grid min-h-full"
           style={{
             gridTemplateColumns:
               `${tablePaneWidth}px minmax(0, 1fr)`,
@@ -3988,7 +3988,7 @@ function ItemsPanel({
         >
           <div
             ref={tableBodyRef}
-            className="overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar\]:hidden"
+            className="overflow-x-auto overflow-y-hidden border-r [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             onScroll={() =>
               syncTableScroll(
                 tableBodyRef,
@@ -4064,7 +4064,7 @@ function ItemsPanel({
           </div>
 
           <div
-            className="min-w-0 overflow-hidden"
+            className="h-full min-w-0 overflow-hidden"
             onPointerDown={(event) => {
               startGrabScroll(
                 event,
@@ -4083,7 +4083,7 @@ function ItemsPanel({
               onScroll={
                 timeline.onItemsScroll
               }
-              className="overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="h-full overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <div style={{ width }}>
                 {rows.map((row) => (
@@ -4842,10 +4842,10 @@ function ResourcesPanel({
       {open && (
         <div
           ref={resourcesViewportRef}
-          className="min-h-0 overflow-x-hidden overflow-y-auto"
+          className="h-full min-h-0 overflow-x-hidden overflow-y-auto"
         >
           <div
-            className="grid"
+            className="grid min-h-full"
             style={{
               gridTemplateColumns:
                 `${tablePaneWidth}px minmax(0, 1fr)`,
@@ -4871,7 +4871,7 @@ function ResourcesPanel({
               )}
             </div>
 
-            <div className="relative min-w-0 overflow-hidden">
+            <div className="relative h-full min-w-0 overflow-hidden">
               <div
                 ref={
                   timeline.resourcesRef
@@ -4892,7 +4892,7 @@ function ResourcesPanel({
                     }
                   );
                 }}
-                className="overflow-x-auto overflow-y-hidden"
+                className="h-full overflow-x-auto overflow-y-hidden"
               >
                 <div style={{ width }}>
                   {resourceSeries.map(
