@@ -705,6 +705,26 @@ function ordered(items, order) {
   );
 }
 
+function getDefaultExpanded(
+  rowId
+) {
+  return rowId.endsWith(
+    '-stoppage-reasons'
+  );
+}
+
+function getExpanded(
+  expanded,
+  rowId
+) {
+  return (
+    expanded[rowId] ??
+    getDefaultExpanded(
+      rowId
+    )
+  );
+}
+
 function deriveRows(
   items,
   stoppages,
@@ -813,6 +833,9 @@ function deriveRows(
       orders[topLevelOrderKey] ?? []
     );
 
+    const assetStoppageReasonsId =
+      `${assetDefinition.id}-stoppage-reasons`;
+
     const assetForecastMarkers = assetItems
       .filter(
         (item) =>
@@ -853,7 +876,12 @@ function deriveRows(
     });
 
 
-    if (!expanded[assetRowId]) {
+    if (
+      !getExpanded(
+        expanded,
+        assetRowId
+      )
+    ) {
       continue;
     }
 
@@ -984,7 +1012,12 @@ function deriveRows(
           'bg-cyan-800 text-white',
       });
 
-      if (!expanded[stoppage.id]) {
+      if (
+        !getExpanded(
+          expanded,
+          stoppage.id
+        )
+      ) {
         continue;
       }
 
@@ -1007,7 +1040,7 @@ function deriveRows(
         level: 2,
         hasChildren:
           true,
-        description: 'Unallocated Work',
+        description: 'Unallocated Work (Add to Stoppage)',
         asset: assetDefinition.id,
         priority: null,
         stoppageId: stoppage.id,
@@ -1015,7 +1048,10 @@ function deriveRows(
 
       if (
         unallocated.length > 0 &&
-        expanded[unallocatedId]
+        getExpanded(
+          expanded,
+          unallocatedId
+        )
       ) {
         rows.push(
           ...unallocated.map((item) => ({
@@ -1031,15 +1067,37 @@ function deriveRows(
       }
     }
 
-    rows.push(
-      ...topLevelReasons.map((item) => ({
-        ...item,
-        rowKey: `top-${item.id}`,
-        type: 'topReason',
-        level: 1,
-        orderKey: topLevelOrderKey,
-      }))
-    );
+    rows.push({
+      id: assetStoppageReasonsId,
+      rowKey: assetStoppageReasonsId,
+      type: 'assetStoppageReasonsHeader',
+      level: 1,
+      hasChildren: true,
+      description: 'Stoppage Reasons (Create Stoppage)',
+      asset: assetDefinition.id,
+      priority: null,
+    });
+
+    if (
+      getExpanded(
+        expanded,
+        assetStoppageReasonsId
+      )
+    ) {
+      rows.push(
+        ...topLevelReasons.map(
+          (item) => ({
+            ...item,
+            rowKey:
+              `top-${item.id}`,
+            type: 'topReason',
+            level: 2,
+            orderKey:
+              topLevelOrderKey,
+          })
+        )
+      );
+    }
 
     const assetUnallocatedId =
       `${assetDefinition.id}-unallocated`;
@@ -1051,13 +1109,16 @@ function deriveRows(
       level: 1,
       hasChildren:
         true,
-      description: 'Unallocated Work',
+      description: 'Unallocated Work (Create Stoppage)',
       asset: assetDefinition.id,
       priority: null,
     });
 
     if (
-      expanded[assetUnallocatedId]
+      getExpanded(
+        expanded,
+        assetUnallocatedId
+      )
     ) {
       rows.push(
         ...unallocatedAssetItems.map(
@@ -1957,7 +2018,9 @@ function DescriptionCell({
 
   const isGroupingHeader =
     row.type === 'unallocatedHeader' ||
-    row.type === 'assetUnallocatedHeader';
+    row.type === 'assetUnallocatedHeader' ||
+    row.type ===
+    'assetStoppageReasonsHeader';
 
   return (
     <div
@@ -2019,7 +2082,18 @@ function DescriptionCell({
               </span>
 
               <span className="font-medium text-slate-500">
-                Unallocated Work
+                {row.description}
+              </span>
+            </>
+          ) : row.type ===
+            'assetStoppageReasonsHeader' ? (
+            <>
+              <span className="mr-1 text-slate-400">
+                🗓️
+              </span>
+
+              <span className="font-medium text-slate-500">
+                {row.description}
               </span>
             </>
           ) : row.workOrderId ? (
@@ -2233,7 +2307,9 @@ function TableRow({
 
   const isGroupingHeader =
     row.type === 'unallocatedHeader' ||
-    row.type === 'assetUnallocatedHeader';
+    row.type === 'assetUnallocatedHeader' ||
+    row.type ===
+    'assetStoppageReasonsHeader';
 
   const cellProps = {
     row,
@@ -2462,6 +2538,7 @@ function getHeight(row) {
   return [
     'unallocatedHeader',
     'assetUnallocatedHeader',
+    'assetStoppageReasonsHeader',
   ].includes(row.type)
     ? 'h-6'
     : 'h-8';
@@ -4062,7 +4139,10 @@ function ItemsPanel({
                   columns={columns}
                   template={template}
                   expanded={
-                    expanded[row.id]
+                    getExpanded(
+                      expanded,
+                      row.id
+                    )
                   }
                   toggle={toggle}
                   allocate={allocate}
@@ -6382,11 +6462,63 @@ export default function PlanningGrid() {
     );
   };
 
-  const toggleExpanded = (id) => {
+  const toggleExpanded = (
+    id
+  ) => {
     setExpanded((current) => ({
       ...current,
-      [id]: !current[id],
+      [id]: !getExpanded(
+        current,
+        id
+      ),
     }));
+  };
+
+  const focusCreatedStoppage = (
+    assetId,
+    stoppageId
+  ) => {
+    setExpanded((current) => {
+      const next = {
+        ...current,
+      };
+
+      for (
+        const stoppage of
+        Object.values(stoppages)
+      ) {
+        if (
+          stoppage.asset === assetId
+        ) {
+          next[stoppage.id] =
+            false;
+
+          next[
+            `${stoppage.id}-unallocated`
+          ] = false;
+        }
+      }
+
+      next[
+        `${assetId}-unallocated`
+      ] = false;
+
+      next[
+        `${assetId}-stoppage-reasons`
+      ] = false;
+
+      next[
+        `asset-${assetId}`
+      ] = true;
+
+      next[stoppageId] = true;
+
+      next[
+        `${stoppageId}-unallocated`
+      ] = true;
+
+      return next;
+    });
   };
 
   const allocateWork = (row) => {
@@ -6403,12 +6535,10 @@ export default function PlanningGrid() {
         },
       }));
 
-      setExpanded((current) => ({
-        ...current,
-        [`asset-${row.asset}`]: true,
-        [stoppageId]: true,
-        [`${stoppageId}-unallocated`]: true,
-      }));
+      focusCreatedStoppage(
+        row.asset,
+        stoppageId
+      );
 
       flashRows([
         stoppageId,
@@ -6454,12 +6584,10 @@ export default function PlanningGrid() {
         return next;
       });
 
-      setExpanded((current) => ({
-        ...current,
-        [`asset-${row.asset}`]: true,
-        [stoppageId]: true,
-        [`${stoppageId}-unallocated`]: true,
-      }));
+      focusCreatedStoppage(
+        row.asset,
+        stoppageId
+      );
 
       flashRows([
         stoppageId,
