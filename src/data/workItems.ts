@@ -1,288 +1,409 @@
 import type { RawWorkItem } from '../types';
 
-export const workItems: RawWorkItem[] = [
-  {
-    id: '4123456-0010',
-    description: '250H PM SERVICE',
-    asset: 'TD6310',
-    priority: 2,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T05:00:00+08:00'),
-    durationMinutes: 390,
-    forecastMs: Date.parse('2026-06-30T12:30:00+08:00'),
-    isStoppageReason: true,
-    workOrderId: '4123456',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '4123456-0020',
-    description: 'REPLACE ENGINE OIL AND FILTERS',
-    asset: 'TD6310',
-    priority: 2,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T05:00:00+08:00'),
-    durationMinutes: 120,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4123456',
-    operationId: '0020',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: '4123456-0030',
-    description: 'INSPECT BRAKE SYSTEM',
-    asset: 'TD6310',
-    priority: 2,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T07:00:00+08:00'),
-    durationMinutes: 90,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4123456',
-    operationId: '0030',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '4991234-0010',
-    description: '2W PM SERVICE',
-    asset: 'TD6310',
-    priority: 3,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T08:30:00+08:00'),
-    durationMinutes: 270,
-    forecastMs: Date.parse('2026-06-30T13:15:00+08:00'),
-    isStoppageReason: true,
-    workOrderId: '4991234',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '4776524-0010',
-    description: 'REPLACE OPERATOR SEAT',
-    asset: 'TD6310',
-    priority: 4,
-    availability: 2,
-    startMs: Date.parse('2026-06-30T12:30:00+08:00'),
-    durationMinutes: 180,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4776524',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '4776524-0020',
-    description: 'TEST OPERATOR SEAT CONTROLS',
-    asset: 'TD6310',
-    priority: 4,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T15:30:00+08:00'),
-    durationMinutes: 60,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4776524',
-    operationId: '0020',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: '4776628-0010',
-    description: 'REPLACE FRONT WINDOW',
-    asset: 'TD6310',
-    priority: 1,
-    availability: 3,
-    startMs: Date.parse('2026-06-30T06:00:00+08:00'),
-    durationMinutes: 270,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4776628',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '4776629-0010',
-    description: 'REPLACE WINDSCREEN WIPER',
-    asset: 'TD6310',
-    priority: 2,
-    availability: 2,
-    startMs: Date.parse('2026-07-02T08:30:00+08:00'),
-    durationMinutes: 60,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '4776629',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: 'forecast-task-0010',
-    description: 'INSPECT STEERING CYLINDER LEAK',
-    asset: 'TD6310',
-    priority: 3,
-    availability: 1,
-    startMs: Date.parse('2026-07-02T11:30:00+08:00'),
-    durationMinutes: 60,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: null,
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: 'planner-reason-0010',
-    description: 'REPORTED LOSS OF PROPULSION',
-    asset: 'TD6310',
-    priority: 1,
-    availability: 1,
-    startMs: Date.parse('2026-07-01T09:00:00+08:00'),
-    durationMinutes: 60,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: null,
-    operationId: '0010',
-    resourceRequirements: [],
-  },
-  {
-    id: '5267001-0010',
-    description: '500H PM SERVICE',
-    asset: 'TD6311',
-    priority: 2,
-    availability: 2,
-    startMs: Date.parse('2026-07-01T06:00:00+08:00'),
-    durationMinutes: 480,
-    forecastMs: Date.parse('2026-07-01T06:00:00+08:00'),
-    isStoppageReason: true,
-    workOrderId: '5267001',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 2,
-      },
-      {
-        resourceCode: 'AUT',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: '5267001-0020',
-    description: 'COMPLETE ELECTRICAL INSPECTION',
-    asset: 'TD6311',
-    priority: 2,
-    availability: 1,
-    startMs: Date.parse('2026-07-01T10:00:00+08:00'),
-    durationMinutes: 120,
-    forecastMs: Date.parse('2026-07-01T06:00:00+08:00'),
-    isStoppageReason: false,
-    workOrderId: '5267001',
-    operationId: '0020',
-    resourceRequirements: [
-      {
-        resourceCode: 'AUT',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: '5267014-0010',
-    description: 'REPAIR EXHAUST BRACKET',
-    asset: 'TD6311',
-    priority: 3,
-    availability: 3,
-    startMs: Date.parse('2026-07-02T14:00:00+08:00'),
-    durationMinutes: 180,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '5267014',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'BLM',
-        quantity: 1,
-      },
-    ],
-  },
-  {
-    id: '5388100-0010',
-    description: 'REPLACE FRONT LEFT TYRE',
-    asset: 'TD6312',
-    priority: 1,
-    availability: 2,
-    startMs: Date.parse('2026-06-30T18:00:00+08:00'),
-    durationMinutes: 240,
-    forecastMs: null,
-    isStoppageReason: false,
-    workOrderId: '5388100',
-    operationId: '0010',
-    resourceRequirements: [
-      {
-        resourceCode: 'TYR',
-        quantity: 2,
-      },
-    ],
-  },
-  {
-    id: '5388100-0020',
-    description: 'INSPECT WHEEL ASSEMBLY',
-    asset: 'TD6312',
-    priority: 1,
-    availability: 1,
-    startMs: Date.parse('2026-06-30T21:00:00+08:00'),
-    durationMinutes: 60,
-    forecastMs: Date.parse('2026-06-30T18:00:00+08:00'),
-    isStoppageReason: false,
-    workOrderId: '5388100',
-    operationId: '0020',
-    resourceRequirements: [
-      {
-        resourceCode: 'HDF',
-        quantity: 1,
-      },
-    ],
-  },
-];
+import { rawWorkItems } from './rawWorkItems';
+
+function normaliseOperation(
+  source
+) {
+  const plannedMs =
+    source.planned == null
+      ? null
+      : Date.parse(
+          source.planned
+        );
+
+  return {
+    id:
+      `mo-${source.workOrderId}-${source.operationId}`,
+
+    description:
+      source.desc,
+
+    asset:
+      source.asset,
+
+    priority:
+      source.prio,
+
+    availability:
+      source.operationId === '0010'
+        ? Math.floor(Math.random() * 3) + 1
+        : null,
+
+    startMs:
+      source.start == null
+        ? null
+        : Date.parse(
+            source.start
+          ),
+
+    durationMinutes:
+      source.duration == null
+        ? null
+        : source.duration * 60,
+
+    forecastMs:
+      plannedMs,
+
+    isStoppageReason:
+      source.mp != null &&
+      source.mi != null &&
+      source.mat === "Y07",
+
+    workOrderId:
+      String(
+        source.workOrderId
+      ),
+
+    operationId:
+      source.operationId,
+
+    resourceRequirements:
+      source.resourceCode != null &&
+      source.quantity != null
+        ? [
+            {
+              resourceCode:
+                source.resourceCode,
+              quantity:
+                source.quantity,
+            },
+          ]
+        : [],
+
+    orderDescription:
+      source.orderDesc,
+
+    subphase:
+      source.subphase,
+
+    notes:
+      source.notes,
+
+    materialStatus:
+      source.mat,
+
+    materialStatusName:
+      source.matName,
+
+    maintenancePlanId:
+      source.mp,
+
+    maintenanceItemId:
+      source.mi,
+
+    maintenancePlanCall:
+      source.mpCall,
+
+    strategy:
+      source.strat,
+
+    plannedMs,
+
+    counter:
+      source.counter,
+
+    importedStoppage:
+      source.stoppage,
+  };
+}
+
+export const workItems = rawWorkItems
+  .filter(
+    (source) =>
+      !source.isCompleted &&
+      !(
+        source.mp != null &&
+        source.desc
+          .toLowerCase()
+          .includes('daily')
+      )
+  )
+  .map(normaliseOperation);
+
+// export const workItems: RawWorkItem[] = [
+//   {
+//     id: '4123456-0010',
+//     description: '250H PM SERVICE',
+//     asset: 'TD6310',
+//     priority: 2,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T05:00:00+08:00'),
+//     durationMinutes: 390,
+//     forecastMs: Date.parse('2026-06-30T12:30:00+08:00'),
+//     isStoppageReason: true,
+//     workOrderId: '4123456',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4123456-0020',
+//     description: 'REPLACE ENGINE OIL AND FILTERS',
+//     asset: 'TD6310',
+//     priority: 2,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T05:00:00+08:00'),
+//     durationMinutes: 120,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4123456',
+//     operationId: '0020',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4123456-0030',
+//     description: 'INSPECT BRAKE SYSTEM',
+//     asset: 'TD6310',
+//     priority: 2,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T07:00:00+08:00'),
+//     durationMinutes: 90,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4123456',
+//     operationId: '0030',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4991234-0010',
+//     description: '2W PM SERVICE',
+//     asset: 'TD6310',
+//     priority: 3,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T08:30:00+08:00'),
+//     durationMinutes: 270,
+//     forecastMs: Date.parse('2026-06-30T13:15:00+08:00'),
+//     isStoppageReason: true,
+//     workOrderId: '4991234',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4776524-0010',
+//     description: 'REPLACE OPERATOR SEAT',
+//     asset: 'TD6310',
+//     priority: 4,
+//     availability: 2,
+//     startMs: Date.parse('2026-06-30T12:30:00+08:00'),
+//     durationMinutes: 180,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4776524',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4776524-0020',
+//     description: 'TEST OPERATOR SEAT CONTROLS',
+//     asset: 'TD6310',
+//     priority: 4,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T15:30:00+08:00'),
+//     durationMinutes: 60,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4776524',
+//     operationId: '0020',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4776628-0010',
+//     description: 'REPLACE FRONT WINDOW',
+//     asset: 'TD6310',
+//     priority: 1,
+//     availability: 3,
+//     startMs: Date.parse('2026-06-30T06:00:00+08:00'),
+//     durationMinutes: 270,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4776628',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '4776629-0010',
+//     description: 'REPLACE WINDSCREEN WIPER',
+//     asset: 'TD6310',
+//     priority: 2,
+//     availability: 2,
+//     startMs: Date.parse('2026-07-02T08:30:00+08:00'),
+//     durationMinutes: 60,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '4776629',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: 'forecast-task-0010',
+//     description: 'INSPECT STEERING CYLINDER LEAK',
+//     asset: 'TD6310',
+//     priority: 3,
+//     availability: 1,
+//     startMs: Date.parse('2026-07-02T11:30:00+08:00'),
+//     durationMinutes: 60,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: null,
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: 'planner-reason-0010',
+//     description: 'REPORTED LOSS OF PROPULSION',
+//     asset: 'TD6310',
+//     priority: 1,
+//     availability: 1,
+//     startMs: Date.parse('2026-07-01T09:00:00+08:00'),
+//     durationMinutes: 60,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: null,
+//     operationId: '0010',
+//     resourceRequirements: [],
+//   },
+//   {
+//     id: '5267001-0010',
+//     description: '500H PM SERVICE',
+//     asset: 'TD6311',
+//     priority: 2,
+//     availability: 2,
+//     startMs: Date.parse('2026-07-01T06:00:00+08:00'),
+//     durationMinutes: 480,
+//     forecastMs: Date.parse('2026-07-01T06:00:00+08:00'),
+//     isStoppageReason: true,
+//     workOrderId: '5267001',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 2,
+//       },
+//       {
+//         resourceCode: 'AUT',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: '5267001-0020', // generate
+//     description: 'COMPLETE ELECTRICAL INSPECTION', // extract
+//     asset: 'TD6311', // extract
+//     priority: 2, // extract
+//     availability: 1, // compute
+//     startMs: Date.parse('2026-07-01T10:00:00+08:00'), // transform
+//     durationMinutes: 120, // transform
+//     forecastMs: Date.parse('2026-07-01T06:00:00+08:00'), // compute
+//     isStoppageReason: false, // compute
+//     workOrderId: '5267001', // extract
+//     operationId: '0020', // extract
+//     resourceRequirements: [ // extract
+//       {
+//         resourceCode: 'AUT',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: '5267014-0010',
+//     description: 'REPAIR EXHAUST BRACKET',
+//     asset: 'TD6311',
+//     priority: 3,
+//     availability: 3,
+//     startMs: Date.parse('2026-07-02T14:00:00+08:00'),
+//     durationMinutes: 180,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '5267014',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'BLM',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+//   {
+//     id: '5388100-0010',
+//     description: 'REPLACE FRONT LEFT TYRE',
+//     asset: 'TD6312',
+//     priority: 1,
+//     availability: 2,
+//     startMs: Date.parse('2026-06-30T18:00:00+08:00'),
+//     durationMinutes: 240,
+//     forecastMs: null,
+//     isStoppageReason: false,
+//     workOrderId: '5388100',
+//     operationId: '0010',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'TYR',
+//         quantity: 2,
+//       },
+//     ],
+//   },
+//   {
+//     id: '5388100-0020',
+//     description: 'INSPECT WHEEL ASSEMBLY',
+//     asset: 'TD6312',
+//     priority: 1,
+//     availability: 1,
+//     startMs: Date.parse('2026-06-30T21:00:00+08:00'),
+//     durationMinutes: 60,
+//     forecastMs: Date.parse('2026-06-30T18:00:00+08:00'),
+//     isStoppageReason: false,
+//     workOrderId: '5388100',
+//     operationId: '0020',
+//     resourceRequirements: [
+//       {
+//         resourceCode: 'HDF',
+//         quantity: 1,
+//       },
+//     ],
+//   },
+// ];
