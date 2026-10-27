@@ -50,10 +50,10 @@ const MILLISECONDS_PER_DAY = 86_400_000;
  *
  * Duplicate timestamps are not supported.
  *
- * To support `predictX(y)`, the y-values must be strictly increasing or
- * strictly decreasing. If the data changes direction or contains repeated
- * y-values, one y-value could correspond to multiple x-values, making the
- * inverse prediction ambiguous.
+ * To support `predictX(y)`, the y-values must be monotonically increasing or
+ * monotonically decreasing. Repeated y-values are allowed. When an exact
+ * y-value occurs at multiple consecutive timestamps, inverse prediction
+ * returns the latest matching timestamp.
  *
  * Extrapolation before the first point uses a least-squares regression line
  * constrained to pass through the first point.
@@ -64,7 +64,10 @@ const MILLISECONDS_PER_DAY = 86_400_000;
  * Predictions between known points use the straight line between the nearest
  * known point before the requested x and the nearest known point after it.
  *
- * Predictions that exactly match a known x or y return the known point.
+ * Predictions that exactly match a known x return the known point. If a
+ * known y occurs at multiple consecutive timestamps, inverse prediction
+ * returns the latest matching point.
+
  *
  * @example
  * Create a predictor:
@@ -145,7 +148,7 @@ const MILLISECONDS_PER_DAY = 86_400_000;
  * @throws {Error} If fewer than two points are supplied.
  * @throws {Error} If a point contains an invalid date or non-finite y-value.
  * @throws {Error} If two points have the same timestamp.
- * @throws {Error} If the y-values are not strictly monotonic.
+ * @throws {Error} If the y-values change direction.
  * @throws {Error} If an endpoint regression produces a zero slope.
  */
 export class Predictor {
@@ -174,7 +177,7 @@ export class Predictor {
     this.validateUniqueTimes();
 
     this.direction = this.determineDirection();
-    this.validateStrictMonotonicity();
+    this.validateMonotonicity();
 
     this.firstPoint = this.points[0];
     this.lastPoint = this.points[this.points.length - 1];
@@ -267,8 +270,8 @@ export class Predictor {
   /**
    * Predicts x for a supplied y value.
    *
-   * The y values must be strictly monotonic so that the result
-   * is unambiguous.
+   * The y values must be monotonic. If an exact y-value occurs at
+   * multiple consecutive timestamps, the latest timestamp is returned.
    */
   predictX(y: number): Date {
     return this.predictXWithDetails(y).x;
@@ -314,11 +317,32 @@ export class Predictor {
       (point) => this.direction * point.value,
     );
 
-    const rightPoint = this.points[rightIndex];
+    const rightPoint =
+      this.points[rightIndex];
 
     if (rightPoint.value === value) {
+      let lastMatchingIndex =
+        rightIndex;
+
+      while (
+        lastMatchingIndex + 1 <
+        this.points.length &&
+        this.points[
+          lastMatchingIndex + 1
+        ].value === value
+      ) {
+        lastMatchingIndex += 1;
+      }
+
+      const lastMatchingPoint =
+        this.points[
+        lastMatchingIndex
+        ];
+
       return {
-        x: new Date(rightPoint.time),
+        x: new Date(
+          lastMatchingPoint.time
+        ),
         y: value,
         method: "actual",
       };
@@ -396,20 +420,26 @@ export class Predictor {
     return lastValue > firstValue ? 1 : -1;
   }
 
-  private validateStrictMonotonicity(): void {
-    for (let index = 1; index < this.points.length; index++) {
-      const previous = this.points[index - 1].value;
-      const current = this.points[index].value;
+  private validateMonotonicity(): void {
+    for (
+      let index = 1;
+      index < this.points.length;
+      index++
+    ) {
+      const previous =
+        this.points[index - 1].value;
+
+      const current =
+        this.points[index].value;
 
       const isValid =
         this.direction === 1
-          ? current > previous
-          : current < previous;
+          ? current >= previous
+          : current <= previous;
 
       if (!isValid) {
         throw new Error(
-          "The y values must be strictly increasing or strictly decreasing " +
-            "to support an unambiguous x-from-y prediction.",
+          "The y values must be monotonically increasing or monotonically decreasing.",
         );
       }
     }
