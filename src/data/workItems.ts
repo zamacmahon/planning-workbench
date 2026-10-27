@@ -190,49 +190,18 @@ for (
     continue;
   }
 
-  const completedCalls =
-    calls.filter(
-      (call) =>
-        call.isCompleted &&
-        call.completed != null
-    );
-
-  const baselineCall =
-    completedCalls.length > 0
-      ? completedCalls[
-      completedCalls.length - 1
-      ]
-      : calls.find(
-        (call) =>
-          !call.isCompleted
-      ) ?? null;
-
-  if (!baselineCall) {
-    continue;
-  }
-
-  const futureCalls =
-    calls.filter(
-      (call) =>
-        !call.isCompleted &&
-        call.mpCall >=
-        baselineCall.mpCall
-    );
-
-  if (futureCalls.length === 0) {
-    continue;
-  }
-
   const counter =
-    baselineCall.counter ??
-    futureCalls.find(
+    calls.find(
       (call) =>
         call.counter != null
-    )?.counter ??
-    null;
+    )?.counter ?? null;
 
   if (counter == null) {
-    for (const call of futureCalls) {
+    for (const call of calls) {
+      if (call.isCompleted) {
+        continue;
+      }
+
       forecastByPlanCall.set(
         getPlanCallKey(call),
         plannedForecast(
@@ -257,7 +226,11 @@ for (
     );
 
   if (!predictor) {
-    for (const call of futureCalls) {
+    for (const call of calls) {
+      if (call.isCompleted) {
+        continue;
+      }
+
       forecastByPlanCall.set(
         getPlanCallKey(call),
         plannedForecast(
@@ -272,87 +245,65 @@ for (
     continue;
   }
 
-  const hasCompletedBaseline =
-    baselineCall.isCompleted &&
-    baselineCall.completed != null;
+  let forecastHours = null;
+  let hasBaseline = false;
 
-  const baselineDate =
-    hasCompletedBaseline
-      ? baselineCall.completed
-      : baselineCall.planned;
-
-  if (baselineDate == null) {
-    for (const call of futureCalls) {
-      forecastByPlanCall.set(
-        getPlanCallKey(call),
-        plannedForecast(
-          call,
-          'missing-baseline',
-          `Maintenance plan ${maintenancePlanId} has no completed or planned baseline date.`
-        )
-      );
-    }
-
-    continue;
-  }
-
-  let forecastHours;
-
-  try {
-    forecastHours =
-      predictor.predictY(
-        baselineDate
-      );
-  } catch (error) {
-    const detail =
-      error instanceof Error
-        ? error.message
-        : String(error);
-
-    for (const call of futureCalls) {
-      forecastByPlanCall.set(
-        getPlanCallKey(call),
-        plannedForecast(
-          call,
-          'predictor-error',
-          detail
-        )
-      );
-    }
-
-    continue;
-  }
-
-  let firstFutureCall = true;
-
-  for (const call of futureCalls) {
+  for (const call of calls) {
     if (
-      !hasCompletedBaseline &&
-      firstFutureCall
+      call.isCompleted &&
+      call.completed != null
     ) {
-      forecastByPlanCall.set(
-        getPlanCallKey(call),
-        {
-          forecastMs:
-            call.planned == null
-              ? null
-              : Date.parse(
-                call.planned
-              ),
-          forecastHours,
-          source: 'planned',
-          warning:
-            'missing-baseline',
-          warningDetail:
-            `Maintenance plan ${maintenancePlanId} has no completed baseline. The first available open call is treated as completed on its planned date.`,
-        }
-      );
+      try {
+        forecastHours =
+          predictor.predictY(
+            call.completed
+          );
 
-      firstFutureCall = false;
+        hasBaseline = true;
+      } catch {
+        forecastHours = null;
+        hasBaseline = false;
+      }
+
       continue;
     }
 
-    firstFutureCall = false;
+    if (call.isCompleted) {
+      continue;
+    }
+
+    if (!hasBaseline) {
+      const fallback =
+        plannedForecast(
+          call,
+          'missing-baseline',
+          `Maintenance plan ${maintenancePlanId}, call ${call.mpCall} has no preceding completed baseline. The call is treated as completed on its planned date.`
+        );
+
+      if (call.planned != null) {
+        try {
+          forecastHours =
+            predictor.predictY(
+              call.planned
+            );
+
+          fallback.forecastHours =
+            forecastHours;
+
+          hasBaseline = true;
+        } catch {
+          forecastHours = null;
+          hasBaseline = false;
+        }
+      }
+
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        fallback
+      );
+
+      continue;
+    }
 
     if (
       call.mpFreq == null ||
@@ -377,9 +328,10 @@ for (
 
           fallback.forecastHours =
             forecastHours;
+
+          hasBaseline = true;
         } catch {
-          // Keep the previous forecast-hours
-          // baseline and planned-date fallback.
+          // Keep the preceding usage baseline.
         }
       }
 
@@ -412,15 +364,38 @@ for (
         }
       );
     } catch (error) {
-      forecastByPlanCall.set(
-        getPlanCallKey(call),
+      const fallback =
         plannedForecast(
           call,
           'predictor-error',
           error instanceof Error
             ? error.message
             : String(error)
-        )
+        );
+
+      if (call.planned != null) {
+        try {
+          forecastHours =
+            predictor.predictY(
+              call.planned
+            );
+
+          fallback.forecastHours =
+            forecastHours;
+
+          hasBaseline = true;
+        } catch {
+          hasBaseline = false;
+          forecastHours = null;
+        }
+      } else {
+        hasBaseline = false;
+        forecastHours = null;
+      }
+
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        fallback
       );
     }
   }
