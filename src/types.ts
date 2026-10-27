@@ -94,18 +94,18 @@ export interface RawWorkItem {
   forecastHours: number | null;
 
   forecastSource:
-    | 'planned'
-    | 'usage';
-  
+  | 'planned'
+  | 'usage';
+
   forecastWarning:
-    | 'missing-baseline'
-    | 'missing-frequency'
-    | 'missing-counter'
-    | 'predictor-error'
-    | null;
-  
+  | 'missing-baseline'
+  | 'missing-frequency'
+  | 'missing-counter'
+  | 'predictor-error'
+  | null;
+
   forecastWarningDetail:
-    string | null;
+  string | null;
 
   /**
    * SAP maintenance order number.
@@ -147,7 +147,21 @@ export interface WorkItemPlanningState {
  */
 export interface WorkItem
   extends RawWorkItem,
-  WorkItemPlanningState { }
+  WorkItemPlanningState {
+
+  expectedStartHours:
+  number | null;
+
+  forecastDeviationHours:
+  number | null;
+
+  forecastDeviationMs:
+  number | null;
+
+  forecastAdviceWarning:
+  string | null;
+
+}
 
 export interface ResourceDefinition {
   resourceCode: string;

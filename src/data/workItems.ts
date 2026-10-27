@@ -617,6 +617,88 @@ function normaliseWorkItem(
   };
 }
 
+export function calculateForecastStartAdvice(
+  item
+) {
+  const forecastDeviationMs =
+    item.startMs != null &&
+    item.forecastMs != null
+      ? item.startMs -
+        item.forecastMs
+      : null;
+
+  if (
+    item.startMs == null ||
+    item.forecastMs == null ||
+    item.forecastSource !== 'usage'
+  ) {
+    return {
+      expectedStartHours: null,
+      forecastDeviationHours: null,
+      forecastDeviationMs,
+      forecastAdviceWarning: null,
+    };
+  }
+
+  if (item.counter == null) {
+    return {
+      expectedStartHours: null,
+      forecastDeviationHours: null,
+      forecastDeviationMs,
+      forecastAdviceWarning:
+        'No counter is available for this performance-based forecast.',
+    };
+  }
+
+  const predictor =
+    predictorByCounter.get(
+      item.counter
+    );
+
+  if (!predictor) {
+    return {
+      expectedStartHours: null,
+      forecastDeviationHours: null,
+      forecastDeviationMs,
+      forecastAdviceWarning:
+        predictorErrorByCounter.get(
+          item.counter
+        ) ??
+        `Counter ${item.counter} has no usable predictor.`,
+    };
+  }
+
+  try {
+    const expectedStartHours =
+      predictor.predictY(
+        item.startMs
+      );
+
+    const forecastDeviationHours =
+      item.forecastHours == null
+        ? null
+        : expectedStartHours -
+          item.forecastHours;
+
+    return {
+      expectedStartHours,
+      forecastDeviationHours,
+      forecastDeviationMs,
+      forecastAdviceWarning: null,
+    };
+  } catch (error) {
+    return {
+      expectedStartHours: null,
+      forecastDeviationHours: null,
+      forecastDeviationMs,
+      forecastAdviceWarning:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    };
+  }
+}
+
 export const workItems = rawWorkItems
   .filter(
     (source) =>

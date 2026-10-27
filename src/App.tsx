@@ -1,7 +1,10 @@
 import React from 'react';
 
 import { SAP_ORDER_URL } from './data/misc';
-import { workItems } from './data/workItems';
+import {
+  calculateForecastStartAdvice,
+  workItems,
+} from './data/workItems';
 import { resourceDefinitions } from './data/resources';
 import { assets } from './data/assets';
 import { resourceCapacity } from './data/resourceCapacity';
@@ -71,6 +74,20 @@ const DEFAULT_COLUMNS = [
     label: 'Start',
     width: 160,
     render: StartCell,
+  },
+  {
+    key: 'expectedUsage',
+    label: 'Expected Usage',
+    shortLabel: 'Usage',
+    width: 110,
+    render: ExpectedUsageCell,
+  },
+  {
+    key: 'forecastDeviation',
+    label: 'Deviation',
+    shortLabel: 'Dev',
+    width: 120,
+    render: ForecastDeviationCell,
   },
   {
     key: 'end',
@@ -290,6 +307,123 @@ const formatDuration = (minutes) => {
   if (hours) return `${hours}hrs`;
   return `${remainder}m`;
 };
+
+function formatSignedQuantity(
+  value
+) {
+  if (value == null) {
+    return '';
+  }
+
+  const rounded =
+    Math.round(value);
+
+  if (rounded === 0) {
+    return '0';
+  }
+
+  return `${rounded > 0
+    ? '+'
+    : ''
+    }${rounded}`;
+}
+
+function formatSignedDuration(
+  durationMs
+) {
+  if (durationMs == null) {
+    return '';
+  }
+
+  const absoluteMs =
+    Math.abs(durationMs);
+
+  const absoluteDays =
+    absoluteMs /
+    (24 * HOUR);
+
+  if (absoluteDays >= 1) {
+    const roundedDays =
+      Math.round(
+        absoluteDays
+      );
+
+    if (roundedDays === 0) {
+      return '0d';
+    }
+
+    return `${
+      durationMs > 0
+        ? '+'
+        : '-'
+    }${roundedDays}d`;
+  }
+
+  const roundedHours =
+    Math.round(
+      absoluteMs / HOUR
+    );
+
+  if (roundedHours === 0) {
+    return '0h';
+  }
+
+  return `${
+    durationMs > 0
+      ? '+'
+      : '-'
+  }${roundedHours}h`;
+}
+
+function formatForecastStartAdvice(
+  row
+) {
+  if (
+    row.startMs == null ||
+    row.forecastMs == null
+  ) {
+    return '';
+  }
+
+  const start =
+    formatFullDateTime(
+      row.startMs
+    );
+
+  const usage =
+    row.expectedStartHours != null
+      ? ` @${Math.round(
+        row.expectedStartHours
+      )}hrs`
+      : '';
+
+  const usageDeviation =
+    row.forecastDeviationHours !=
+      null
+      ? `Usage ${formatSignedQuantity(
+        row.forecastDeviationHours
+      )}hrs`
+      : null;
+
+  const timeDeviation =
+    row.forecastDeviationMs != null
+      ? `Time ${formatSignedDuration(
+        row.forecastDeviationMs
+      )}`
+      : null;
+
+  const deviations = [
+    usageDeviation,
+    timeDeviation,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+
+  return `${start}${usage}${deviations
+    ? ` (${deviations})`
+    : ''
+    }`;
+}
 
 function getResourceDemands(item) {
   return item.resourceRequirements ?? [];
@@ -1002,6 +1136,15 @@ function deriveRows(
           item.forecastWarning,
         forecastWarningDetail:
           item.forecastWarningDetail,
+        expectedStartHours:
+          item.expectedStartHours,
+        forecastDeviationHours:
+          item.forecastDeviationHours,
+        forecastDeviationMs:
+          item.forecastDeviationMs,
+        forecastAdviceWarning:
+          item.forecastAdviceWarning,
+        workOrderId: item.workOrderId,
         workOrderId: item.workOrderId,
         description: item.description,
         isStoppageReason: true,
@@ -1127,6 +1270,15 @@ function deriveRows(
               item.forecastWarning,
             forecastWarningDetail:
               item.forecastWarningDetail,
+            expectedStartHours:
+              item.expectedStartHours,
+            forecastDeviationHours:
+              item.forecastDeviationHours,
+            forecastDeviationMs:
+              item.forecastDeviationMs,
+            forecastAdviceWarning:
+              item.forecastAdviceWarning,
+            workOrderId: item.workOrderId,
             workOrderId: item.workOrderId,
             description: item.description,
             isStoppageReason: true,
@@ -2094,8 +2246,8 @@ function ForecastCell({
     )}`,
     row.forecastHours != null
       ? `Forecast usage: ${formatResourceQuantity(
-          row.forecastHours
-        )}`
+        row.forecastHours
+      )}`
       : null,
     warningLabel
       ? `Warning: ${warningLabel}`
@@ -2212,6 +2364,66 @@ function StartCell({
           row.startMs
         )
       )}
+    </div>
+  );
+}
+
+function ExpectedUsageCell({
+  row,
+}) {
+  const tooltip =
+    formatForecastStartAdvice(
+      row
+    );
+
+  return (
+    <div
+      className="flex items-center whitespace-nowrap border-r px-2"
+      title={tooltip}
+    >
+      {row.expectedStartHours != null
+        ? `${Math.round(
+          row.expectedStartHours
+        )}hrs`
+        : ''}
+    </div>
+  );
+}
+
+function ForecastDeviationCell({
+  row,
+}) {
+  const usageDeviation =
+    row.forecastDeviationHours != null
+      ? `Usage ${formatSignedQuantity(
+        row.forecastDeviationHours
+      )}hrs`
+      : null;
+
+  const timeDeviation =
+    row.forecastDeviationMs != null
+      ? `Time ${formatSignedDuration(
+        row.forecastDeviationMs
+      )}`
+      : null;
+
+  const text = [
+    usageDeviation,
+    timeDeviation,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+
+  return (
+    <div
+      className="flex items-center whitespace-nowrap border-r px-2"
+      title={
+        formatForecastStartAdvice(
+          row
+        )
+      }
+    >
+      {text}
     </div>
   );
 }
@@ -2754,6 +2966,7 @@ function formatWorkTooltip({
   startMs,
   finishMs,
   forecastMs,
+  forecastStartAdvice,
 }) {
   const lines = [];
 
@@ -2782,6 +2995,12 @@ function formatWorkTooltip({
       `Forecast: ${formatFullDateTime(
         forecastMs
       )}`
+    );
+  }
+
+  if (forecastStartAdvice) {
+    lines.push(
+      `Scheduled: ${forecastStartAdvice}`
     );
   }
 
@@ -3142,6 +3361,12 @@ function GanttRow({
                 row.type === 'stoppage'
                   ? null
                   : row.forecastMs ?? null,
+              forecastStartAdvice:
+                row.type === 'stoppage'
+                  ? null
+                  : formatForecastStartAdvice(
+                    row
+                  ),
             })}
             onPointerEnter={() => {
               setHoveredRowId(
@@ -3239,43 +3464,53 @@ function GanttRow({
                 : 'Stoppage reason forecast'
               : 'Work forecast';
 
-              const forecastOwner =
-              row.type === 'asset'
-                ? marker
-                : row;
-            
-            const warningLabel =
-              formatForecastWarning(
-                forecastOwner.forecastWarning
-              );
-            
-            const tooltip = [
-              `${forecastType}: ${formatFullDateTime(
-                forecastMs
-              )}`,
-              `Source: ${formatForecastSource(
+          const forecastOwner =
+            row.type === 'asset'
+              ? marker
+              : row;
+
+          const warningLabel =
+            formatForecastWarning(
+              forecastOwner.forecastWarning
+            );
+
+          const tooltip = [
+            `${forecastType}: ${formatFullDateTime(
+              forecastMs
+            )}`,
+            `Source: ${formatForecastSource(
+              forecastOwner
+            )}`,
+            forecastOwner.forecastHours != null
+              ? `Forecast usage: ${formatResourceQuantity(
+                forecastOwner.forecastHours
+              )}`
+              : null,
+            warningLabel
+              ? `Warning: ${warningLabel}`
+              : null,
+            forecastOwner.forecastWarningDetail ??
+            null,
+            formatForecastStartAdvice(
+              forecastOwner
+            )
+              ? `Scheduled: ${formatForecastStartAdvice(
                 forecastOwner
-              )}`,
-              forecastOwner.forecastHours != null
-                ? `Forecast usage: ${formatResourceQuantity(
-                    forecastOwner.forecastHours
-                  )}`
-                : null,
-              warningLabel
-                ? `Warning: ${warningLabel}`
-                : null,
-              forecastOwner.forecastWarningDetail ??
-                null,
-              marker.workOrderId
-                ? `Work order: ${marker.workOrderId}`
-                : null,
-              marker.description ?? null,
-              row.type !== 'asset'
-                ? 'Click to move start date to align to forecast.'
-                : null,
-            ]
-              .filter(Boolean)
-              .join('\n');
+              )}`
+              : null,
+            forecastOwner.forecastAdviceWarning
+              ? `Schedule advice warning: ${forecastOwner.forecastAdviceWarning}`
+              : null,
+            marker.workOrderId
+              ? `Work order: ${marker.workOrderId}`
+              : null,
+            marker.description ?? null,
+            row.type !== 'asset'
+              ? 'Click to move start date to align to forecast.'
+              : null,
+          ]
+            .filter(Boolean)
+            .join('\n');
 
           const forecastClass =
             allocatedStoppageReason
@@ -6333,7 +6568,15 @@ export default function PlanningGrid() {
     timelineRange,
     setTimelineRange,
   });
-  const items = applyState(allocation, schedule);
+  const items = applyState(
+    allocation,
+    schedule
+  ).map((item) => ({
+    ...item,
+    ...calculateForecastStartAdvice(
+      item
+    ),
+  }));
   const itemById = Object.fromEntries(
     items.map((item) => [
       item.id,
