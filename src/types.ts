@@ -91,6 +91,22 @@ export interface RawWorkItem {
    */
   isStoppageReason: boolean;
 
+  forecastHours: number | null;
+
+  forecastSource:
+    | 'planned'
+    | 'usage';
+  
+  forecastWarning:
+    | 'missing-baseline'
+    | 'missing-frequency'
+    | 'missing-counter'
+    | 'predictor-error'
+    | null;
+  
+  forecastWarningDetail:
+    string | null;
+
   /**
    * SAP maintenance order number.
    *

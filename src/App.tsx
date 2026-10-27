@@ -994,6 +994,14 @@ function deriveRows(
       .map((item) => ({
         id: item.id,
         forecastMs: item.forecastMs,
+        forecastHours:
+          item.forecastHours,
+        forecastSource:
+          item.forecastSource,
+        forecastWarning:
+          item.forecastWarning,
+        forecastWarningDetail:
+          item.forecastWarningDetail,
         workOrderId: item.workOrderId,
         description: item.description,
         isStoppageReason: true,
@@ -1111,6 +1119,14 @@ function deriveRows(
           .map((item) => ({
             id: item.id,
             forecastMs: item.forecastMs,
+            forecastHours:
+              item.forecastHours,
+            forecastSource:
+              item.forecastSource,
+            forecastWarning:
+              item.forecastWarning,
+            forecastWarningDetail:
+              item.forecastWarningDetail,
             workOrderId: item.workOrderId,
             description: item.description,
             isStoppageReason: true,
@@ -2008,30 +2024,121 @@ function PriorityCell({
   );
 }
 
+function getForecastSourceSymbol(
+  row
+) {
+  if (row.forecastWarning) {
+    return '⚠';
+  }
+
+  return row.forecastSource ===
+    'usage'
+    ? '∿'
+    : '◷';
+}
+
+function formatForecastSource(
+  row
+) {
+  if (row.forecastSource === 'usage') {
+    return 'Computed from usage';
+  }
+
+  return row.forecastWarning
+    ? 'Planned date fallback'
+    : 'Planned date';
+}
+
+function formatForecastWarning(
+  warning
+) {
+  switch (warning) {
+    case 'missing-baseline':
+      return 'Missing completed baseline';
+
+    case 'missing-frequency':
+      return 'Missing maintenance-plan frequency';
+
+    case 'missing-counter':
+      return 'Missing counter';
+
+    case 'predictor-error':
+      return 'Counter forecast failed';
+
+    default:
+      return null;
+  }
+}
+
 function ForecastCell({
   row,
   scrollToTime,
 }) {
+  if (row.forecastMs == null) {
+    return (
+      <div className="flex items-center whitespace-nowrap border-r px-2" />
+    );
+  }
+
+  const warningLabel =
+    formatForecastWarning(
+      row.forecastWarning
+    );
+
+  const tooltip = [
+    `Forecast: ${formatFullDateTime(
+      row.forecastMs
+    )}`,
+    `Source: ${formatForecastSource(
+      row
+    )}`,
+    row.forecastHours != null
+      ? `Forecast usage: ${formatResourceQuantity(
+          row.forecastHours
+        )}`
+      : null,
+    warningLabel
+      ? `Warning: ${warningLabel}`
+      : null,
+    row.forecastWarningDetail,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
   return (
     <div className="flex items-center gap-1 whitespace-nowrap border-r px-2">
-      {formatDateTime(
-        row.forecastMs
-      )}
+      <span
+        className={
+          row.forecastWarning
+            ? 'cursor-help text-amber-700'
+            : 'cursor-help text-slate-500'
+        }
+        title={tooltip}
+      >
+        {getForecastSourceSymbol(
+          row
+        )}
+      </span>
 
-      {row.forecastMs != null && (
-        <button
-          className="shrink-0 text-slate-500 hover:text-slate-900"
-          title="Scroll to forecast"
-          onClick={(event) => {
-            event.stopPropagation();
-            scrollToTime(
-              row.forecastMs
-            );
-          }}
-        >
-          <EyeIcon />
-        </button>
-      )}
+      <span title={tooltip}>
+        {formatDateTime(
+          row.forecastMs
+        )}
+      </span>
+
+      <button
+        className="shrink-0 text-slate-500 hover:text-slate-900"
+        title="Scroll to forecast"
+        onClick={(event) => {
+          event.stopPropagation();
+
+          scrollToTime(
+            row.forecastMs
+          );
+        }}
+      >
+        <EyeIcon />
+      </button>
     </div>
   );
 }
@@ -2768,6 +2875,14 @@ function GanttRow({
           {
             id: row.id,
             forecastMs: row.forecastMs,
+            forecastHours:
+              row.forecastHours ?? null,
+            forecastSource:
+              row.forecastSource ?? 'planned',
+            forecastWarning:
+              row.forecastWarning ?? null,
+            forecastWarningDetail:
+              row.forecastWarningDetail ?? null,
             workOrderId:
               row.workOrderId ?? null,
             description:
@@ -3124,20 +3239,43 @@ function GanttRow({
                 : 'Stoppage reason forecast'
               : 'Work forecast';
 
-          const tooltip = [
-            `${forecastType}: ${formatFullDateTime(
-              forecastMs
-            )}`,
-            marker.workOrderId
-              ? `Work order: ${marker.workOrderId}`
-              : null,
-            marker.description ?? null,
-            row.type !== 'asset'
-              ? 'Click to move start date to align to forecast.'
-              : null,
-          ]
-            .filter(Boolean)
-            .join('\n');
+              const forecastOwner =
+              row.type === 'asset'
+                ? marker
+                : row;
+            
+            const warningLabel =
+              formatForecastWarning(
+                forecastOwner.forecastWarning
+              );
+            
+            const tooltip = [
+              `${forecastType}: ${formatFullDateTime(
+                forecastMs
+              )}`,
+              `Source: ${formatForecastSource(
+                forecastOwner
+              )}`,
+              forecastOwner.forecastHours != null
+                ? `Forecast usage: ${formatResourceQuantity(
+                    forecastOwner.forecastHours
+                  )}`
+                : null,
+              warningLabel
+                ? `Warning: ${warningLabel}`
+                : null,
+              forecastOwner.forecastWarningDetail ??
+                null,
+              marker.workOrderId
+                ? `Work order: ${marker.workOrderId}`
+                : null,
+              marker.description ?? null,
+              row.type !== 'asset'
+                ? 'Click to move start date to align to forecast.'
+                : null,
+            ]
+              .filter(Boolean)
+              .join('\n');
 
           const forecastClass =
             allocatedStoppageReason

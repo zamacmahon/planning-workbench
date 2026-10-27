@@ -1,20 +1,530 @@
-import type { RawWorkItem } from '../types';
-
+import { Predictor } from '../lib/predictor';
+import { counters } from './counters';
+import { readings } from './readings';
 import { rawWorkItems } from './rawWorkItems';
 
-function normaliseOperation(
+type ForecastSource =
+  | 'planned'
+  | 'usage';
+
+type ForecastWarning =
+  | 'missing-baseline'
+  | 'missing-frequency'
+  | 'missing-counter'
+  | 'predictor-error';
+
+interface ForecastResult {
+  forecastMs: number | null;
+  forecastHours: number | null;
+  source: ForecastSource;
+  warning: ForecastWarning | null;
+  warningDetail: string | null;
+}
+
+const predictorByCounter =
+  new Map();
+
+const predictorErrorByCounter =
+  new Map();
+
+for (const counter of counters) {
+  const counterReadings =
+    readings
+      .filter(
+        (reading) =>
+          reading.counter ===
+          counter.counter
+      )
+      .map((reading) => ({
+        x: reading.when,
+        y: reading.usage,
+      }));
+
+  try {
+    predictorByCounter.set(
+      counter.counter,
+      new Predictor(
+        counterReadings
+      )
+    );
+  } catch (error) {
+    predictorErrorByCounter.set(
+      counter.counter,
+      error instanceof Error
+        ? error.message
+        : String(error)
+    );
+  }
+}
+
+function getPlanCallKey(
+  source
+) {
+  return `${source.mp}:${source.mpCall}`;
+}
+
+function plannedForecast(
+  source,
+  warning = null,
+  warningDetail = null
+): ForecastResult {
+  return {
+    forecastMs:
+      source.planned == null
+        ? null
+        : Date.parse(
+          source.planned
+        ),
+    forecastHours: null,
+    source: 'planned',
+    warning,
+    warningDetail,
+  };
+}
+
+const planCalls =
+  rawWorkItems.filter(
+    (source) =>
+      source.mp != null &&
+      source.mpCall != null &&
+      source.mpCall <
+      90_000_000
+  );
+
+
+const planCallsByMaintenancePlan =
+  new Map();
+
+for (const source of planCalls) {
+  let callsByNumber =
+    planCallsByMaintenancePlan.get(
+      source.mp
+    );
+
+  if (!callsByNumber) {
+    callsByNumber =
+      new Map();
+
+    planCallsByMaintenancePlan.set(
+      source.mp,
+      callsByNumber
+    );
+  }
+
+  const existing =
+    callsByNumber.get(
+      source.mpCall
+    );
+
+  if (
+    !existing ||
+    (
+      source.isCompleted &&
+      !existing.isCompleted
+    )
+  ) {
+    callsByNumber.set(
+      source.mpCall,
+      source
+    );
+  }
+}
+
+const orderedPlanCallsByMaintenancePlan =
+  new Map(
+    [
+      ...planCallsByMaintenancePlan
+        .entries(),
+    ].map(
+      ([
+        maintenancePlanId,
+        callsByNumber,
+      ]) => [
+          maintenancePlanId,
+          [
+            ...callsByNumber.values(),
+          ].sort(
+            (a, b) =>
+              a.mpCall -
+              b.mpCall
+          ),
+        ]
+    )
+  );
+
+const forecastByPlanCall =
+  new Map();
+
+for (
+  const [
+    maintenancePlanId,
+    calls,
+  ] of
+  orderedPlanCallsByMaintenancePlan
+) {
+  if (calls.length === 0) {
+    continue;
+  }
+
+  const strategy =
+    planCalls.find(
+      (call) =>
+        call.mp ===
+        maintenancePlanId &&
+        call.strat != null
+    )?.strat ?? null;
+
+  const isPerformanceBased =
+    strategy?.startsWith(
+      'P'
+    ) ?? false;
+
+  if (!isPerformanceBased) {
+    for (const call of calls) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(call)
+      );
+    }
+
+    continue;
+  }
+
+  const completedCalls =
+    calls.filter(
+      (call) =>
+        call.isCompleted &&
+        call.completed != null
+    );
+
+  const baselineCall =
+    completedCalls.length > 0
+      ? completedCalls[
+      completedCalls.length - 1
+      ]
+      : calls.find(
+        (call) =>
+          !call.isCompleted
+      ) ?? null;
+
+  if (!baselineCall) {
+    continue;
+  }
+
+  const futureCalls =
+    calls.filter(
+      (call) =>
+        !call.isCompleted &&
+        call.mpCall >=
+        baselineCall.mpCall
+    );
+
+  if (futureCalls.length === 0) {
+    continue;
+  }
+
+  const counter =
+    baselineCall.counter ??
+    futureCalls.find(
+      (call) =>
+        call.counter != null
+    )?.counter ??
+    null;
+
+  if (counter == null) {
+    for (const call of futureCalls) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(
+          call,
+          'missing-counter',
+          `Maintenance plan ${maintenancePlanId} has no counter.`
+        )
+      );
+    }
+
+    continue;
+  }
+
+  const predictor =
+    predictorByCounter.get(
+      counter
+    );
+
+  const predictorError =
+    predictorErrorByCounter.get(
+      counter
+    );
+
+  if (!predictor) {
+    for (const call of futureCalls) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(
+          call,
+          'predictor-error',
+          predictorError ??
+          `Counter ${counter} has no usable predictor.`
+        )
+      );
+    }
+
+    continue;
+  }
+
+  const hasCompletedBaseline =
+    baselineCall.isCompleted &&
+    baselineCall.completed != null;
+
+  const baselineDate =
+    hasCompletedBaseline
+      ? baselineCall.completed
+      : baselineCall.planned;
+
+  if (baselineDate == null) {
+    for (const call of futureCalls) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(
+          call,
+          'missing-baseline',
+          `Maintenance plan ${maintenancePlanId} has no completed or planned baseline date.`
+        )
+      );
+    }
+
+    continue;
+  }
+
+  let forecastHours;
+
+  try {
+    forecastHours =
+      predictor.predictY(
+        baselineDate
+      );
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    for (const call of futureCalls) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(
+          call,
+          'predictor-error',
+          detail
+        )
+      );
+    }
+
+    continue;
+  }
+
+  let firstFutureCall = true;
+
+  for (const call of futureCalls) {
+    if (
+      !hasCompletedBaseline &&
+      firstFutureCall
+    ) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        {
+          forecastMs:
+            call.planned == null
+              ? null
+              : Date.parse(
+                call.planned
+              ),
+          forecastHours,
+          source: 'planned',
+          warning:
+            'missing-baseline',
+          warningDetail:
+            `Maintenance plan ${maintenancePlanId} has no completed baseline. The first available open call is treated as completed on its planned date.`,
+        }
+      );
+
+      firstFutureCall = false;
+      continue;
+    }
+
+    firstFutureCall = false;
+
+    if (
+      call.mpFreq == null ||
+      !Number.isFinite(
+        call.mpFreq
+      ) ||
+      call.mpFreq <= 0
+    ) {
+      const fallback =
+        plannedForecast(
+          call,
+          'missing-frequency',
+          `Maintenance plan ${maintenancePlanId}, call ${call.mpCall} has no valid mpFreq.`
+        );
+
+      if (call.planned != null) {
+        try {
+          forecastHours =
+            predictor.predictY(
+              call.planned
+            );
+
+          fallback.forecastHours =
+            forecastHours;
+        } catch {
+          // Keep the previous forecast-hours
+          // baseline and planned-date fallback.
+        }
+      }
+
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        fallback
+      );
+
+      continue;
+    }
+
+    forecastHours +=
+      call.mpFreq;
+
+    try {
+      const prediction =
+        predictor.predictXWithDetails(
+          forecastHours
+        );
+
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        {
+          forecastMs:
+            prediction.x.getTime(),
+          forecastHours,
+          source: 'usage',
+          warning: null,
+          warningDetail: null,
+        }
+      );
+    } catch (error) {
+      forecastByPlanCall.set(
+        getPlanCallKey(call),
+        plannedForecast(
+          call,
+          'predictor-error',
+          error instanceof Error
+            ? error.message
+            : String(error)
+        )
+      );
+    }
+  }
+}
+
+const firstOperationIdByOrder =
+  new Map();
+
+for (const source of rawWorkItems) {
+  if (
+    source.isCompleted ||
+    source.workOrderId == null ||
+    source.operationId == null ||
+    (
+      source.mp != null &&
+      source.desc
+        .toLowerCase()
+        .includes('daily')
+    )
+  ) {
+    continue;
+  }
+
+  const operationId =
+    String(
+      source.operationId
+    );
+
+  const current =
+    firstOperationIdByOrder.get(
+      source.workOrderId
+    );
+
+  if (
+    current == null ||
+    operationId.localeCompare(
+      current,
+      undefined,
+      {
+        numeric: true,
+      }
+    ) < 0
+  ) {
+    firstOperationIdByOrder.set(
+      source.workOrderId,
+      operationId
+    );
+  }
+}
+
+function normaliseWorkItem(
   source
 ) {
   const plannedMs =
     source.planned == null
       ? null
       : Date.parse(
-          source.planned
-        );
+        source.planned
+      );
+
+  const forecastResult =
+    source.mp != null &&
+      source.mpCall != null
+      ? forecastByPlanCall.get(
+        getPlanCallKey(
+          source
+        )
+      )
+      : null;
+
+  const forecast =
+    forecastResult ??
+    plannedForecast(
+      source,
+      source.strat?.startsWith('P')
+        ? 'predictor-error'
+        : null,
+      source.strat?.startsWith('P')
+        ? `No forecast result was generated for maintenance plan ${source.mp}, call ${source.mpCall}.`
+        : null
+    );
+
+  const isForecastOnly =
+    source.operationId == null;
+
+  const firstOperationId =
+    source.workOrderId == null
+      ? null
+      : firstOperationIdByOrder.get(
+        source.workOrderId
+      ) ?? null;
+
+  const ownsForecast =
+    isForecastOnly ||
+    (
+      firstOperationId != null &&
+      String(
+        source.operationId
+      ) === firstOperationId
+    );
 
   return {
     id:
-      `mo-${source.workOrderId}-${source.operationId}`,
+      source.id,
 
     description:
       source.desc,
@@ -31,19 +541,35 @@ function normaliseOperation(
         : null,
 
     startMs:
-      source.start == null
+      source.operationId == null ||
+        source.start == null
         ? null
         : Date.parse(
-            source.start
-          ),
+          source.start
+        ),
 
     durationMinutes:
-      source.duration == null
+      source.operationId == null ||
+        source.duration == null
         ? null
         : source.duration * 60,
 
     forecastMs:
-      plannedMs,
+      ownsForecast
+        ? forecast.forecastMs
+        : null,
+
+    forecastHours:
+      forecast.forecastHours,
+
+    forecastSource:
+      forecast.source,
+
+    forecastWarning:
+      forecast.warning,
+
+    forecastWarningDetail:
+      forecast.warningDetail,
 
     isStoppageReason:
       source.mp != null &&
@@ -51,24 +577,32 @@ function normaliseOperation(
       source.mat === "Y07",
 
     workOrderId:
-      String(
-        source.workOrderId
-      ),
+      source.operationId == null ||
+        source.workOrderId == null
+        ? null
+        : String(
+          source.workOrderId
+        ),
 
     operationId:
-      source.operationId,
+      source.operationId == null
+        ? null
+        : String(
+          source.operationId
+        ),
 
     resourceRequirements:
-      source.resourceCode != null &&
-      source.quantity != null
+      source.operationId != null &&
+        source.resourceCode != null &&
+        source.quantity != null
         ? [
-            {
-              resourceCode:
-                source.resourceCode,
-              quantity:
-                source.quantity,
-            },
-          ]
+          {
+            resourceCode:
+              source.resourceCode,
+            quantity:
+              source.quantity,
+          },
+        ]
         : [],
 
     orderDescription:
@@ -119,7 +653,9 @@ export const workItems = rawWorkItems
           .includes('daily')
       )
   )
-  .map(normaliseOperation);
+  .map(
+    normaliseWorkItem
+  );
 
 // export const workItems: RawWorkItem[] = [
 //   {
