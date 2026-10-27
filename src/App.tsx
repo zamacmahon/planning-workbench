@@ -699,9 +699,156 @@ function applyState(allocation, schedule) {
 }
 
 function ordered(items, order) {
-  const rank = new Map(order.map((id, index) => [id, index]));
+  const rank = new Map(
+    order.map((id, index) => [
+      id,
+      index,
+    ])
+  );
+
+  const orderStartByWorkOrder =
+    new Map();
+
+  for (const item of items) {
+    if (!item.workOrderId) {
+      continue;
+    }
+
+    const current =
+      orderStartByWorkOrder.get(
+        item.workOrderId
+      ) ?? {
+        earliestStartMs:
+          Number.POSITIVE_INFINITY,
+        earliestForecastMs:
+          Number.POSITIVE_INFINITY,
+      };
+
+    if (
+      item.startMs != null
+    ) {
+      current.earliestStartMs =
+        Math.min(
+          current.earliestStartMs,
+          item.startMs
+        );
+    }
+
+    if (
+      item.forecastMs != null
+    ) {
+      current.earliestForecastMs =
+        Math.min(
+          current.earliestForecastMs,
+          item.forecastMs
+        );
+    }
+
+    orderStartByWorkOrder.set(
+      item.workOrderId,
+      current
+    );
+  }
+
+  const sortMsFor = (item) => {
+    if (item.workOrderId) {
+      const orderTiming =
+        orderStartByWorkOrder.get(
+          item.workOrderId
+        );
+
+      if (!orderTiming) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      return Number.isFinite(
+        orderTiming.earliestStartMs
+      )
+        ? orderTiming.earliestStartMs
+        : orderTiming.earliestForecastMs;
+    }
+
+    return (
+      item.startMs ??
+      item.forecastMs ??
+      Number.POSITIVE_INFINITY
+    );
+  };
+
   return [...items].sort(
-    (a, b) => (rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999)
+    (a, b) => {
+      const aRank =
+        rank.get(a.id);
+
+      const bRank =
+        rank.get(b.id);
+
+      if (
+        aRank != null ||
+        bRank != null
+      ) {
+        if (aRank == null) {
+          return 1;
+        }
+
+        if (bRank == null) {
+          return -1;
+        }
+
+        return aRank - bRank;
+      }
+
+      const aSortMs =
+        sortMsFor(a);
+
+      const bSortMs =
+        sortMsFor(b);
+
+      if (aSortMs !== bSortMs) {
+        return aSortMs < bSortMs
+          ? -1
+          : 1;
+      }
+
+      const aOrder =
+        a.workOrderId == null
+          ? `~${a.id}`
+          : String(
+            a.workOrderId
+          );
+
+      const bOrder =
+        b.workOrderId == null
+          ? `~${b.id}`
+          : String(
+            b.workOrderId
+          );
+
+      const orderDifference =
+        aOrder.localeCompare(
+          bOrder,
+          undefined,
+          {
+            numeric: true,
+          }
+        );
+
+      if (orderDifference !== 0) {
+        return orderDifference;
+      }
+
+      return String(
+        a.operationId ?? ''
+      ).localeCompare(
+        String(
+          b.operationId ?? ''
+        ),
+        undefined,
+        {
+          numeric: true,
+        }
+      );
+    }
   );
 }
 
