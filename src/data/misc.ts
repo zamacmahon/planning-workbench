@@ -4,7 +4,7 @@ export const SAP_ORDER_URL =
 export const SAP_MP_URL =
   'https://my301631.s4hana.ondemand.com/ui#MaintenancePlan-schedule?MaintenancePlan=';
 
-function makeWomaUrl(
+export function makeWomaUrl(
   plant,
   order
 ) {

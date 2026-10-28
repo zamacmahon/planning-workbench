@@ -12,6 +12,9 @@ import {
 } from './data/workItems';
 import { resourceDefinitions } from './data/resources';
 import { assets } from './data/assets';
+import {
+  stoppages as importedStoppages,
+} from './data/stoppages';
 import { resourceCapacity } from './data/resourceCapacity';
 
 import {
@@ -824,6 +827,110 @@ function getGroupedWorkItems(
   );
 }
 
+function buildImportedPlanningState(
+  items
+) {
+  const stoppages = {};
+  const allocation = {};
+
+  const importedStoppageById =
+    new Map(
+      importedStoppages.map(
+        (stoppage) => [
+          stoppage.stoppage,
+          stoppage,
+        ]
+      )
+    );
+
+  for (
+    const imported of
+    importedStoppages
+  ) {
+    stoppages[
+      imported.stoppage
+    ] = {
+      id:
+        imported.stoppage,
+
+      asset:
+        imported.asset,
+
+      description:
+        imported.title ??
+        imported.stoppage,
+
+      scheduleId:
+        imported.schedule ??
+        null,
+
+      imported: true,
+    };
+  }
+
+  for (const item of items) {
+    if (!item.importedStoppage) {
+      continue;
+    }
+
+    const imported =
+      importedStoppageById.get(
+        item.importedStoppage
+      );
+
+    if (
+      !stoppages[
+      item.importedStoppage
+      ]
+    ) {
+      stoppages[
+        item.importedStoppage
+      ] = {
+        id:
+          item.importedStoppage,
+
+        asset:
+          item.asset,
+
+        description:
+          item.orderDescription ??
+          item.description ??
+          item.importedStoppage,
+
+        scheduleId: null,
+
+        imported: true,
+      };
+    } else if (
+      imported?.title == null &&
+      (
+        stoppages[
+          item.importedStoppage
+        ].description ===
+        imported?.stoppage ||
+        !stoppages[
+          item.importedStoppage
+        ].description
+      )
+    ) {
+      stoppages[
+        item.importedStoppage
+      ].description =
+        item.orderDescription ??
+        item.description ??
+        item.importedStoppage;
+    }
+
+    allocation[item.id] =
+      item.importedStoppage;
+  }
+
+  return {
+    stoppages,
+    allocation,
+  };
+}
+
 function applyState(allocation, schedule) {
   return workItems.map((source) => {
     const scheduleEntry = schedule[source.id];
@@ -1010,7 +1117,7 @@ function getExpanded(
   );
 }
 
-function deriveRows(
+function deriveAssetRows(
   items,
   stoppages,
   expanded,
@@ -8790,8 +8897,56 @@ export default function PlanningGrid() {
     availability: true,
     descriptions: true,
   });
-  const [stoppages, setStoppages] = React.useState(sampleStoppages);
-  const [allocation, setAllocation] = React.useState(sampleAllocation);
+  const importedPlanningState =
+    React.useMemo(
+      () =>
+        buildImportedPlanningState(
+          workItems
+        ),
+      []
+    );
+
+  const [
+    stoppages,
+    setStoppages,
+  ] = React.useState(
+    () => ({
+      ...importedPlanningState
+        .stoppages,
+      ...sampleStoppages,
+    })
+  );
+
+  const [
+    stoppageSchedule,
+    setStoppageSchedule,
+  ] = React.useState(
+    () =>
+      Object.fromEntries(
+        Object.values(
+          importedPlanningState
+            .stoppages
+        ).map(
+          (stoppage) => [
+            stoppage.id,
+            stoppage.scheduleId ??
+              null,
+          ]
+        )
+      )
+  );
+
+  const [
+    allocation,
+    setAllocation,
+  ] = React.useState(
+    () => ({
+      ...importedPlanningState
+        .allocation,
+      ...sampleAllocation,
+    })
+  );
+
   const [schedule, setSchedule] = React.useState(sampleSchedule);
   const [expanded, setExpanded] = React.useState(sampleExpanded);
   const [expandedResources, setExpandedResources] = React.useState(
@@ -9060,7 +9215,7 @@ export default function PlanningGrid() {
       )
       : [];
 
-  const rows = deriveRows(
+  const assetRows = deriveAssetRows(
     items,
     stoppages,
     expanded,
@@ -9068,6 +9223,8 @@ export default function PlanningGrid() {
     timelineGeometry.startMs,
     timelineGeometry.endMs
   );
+
+  const rows = assetRows;
 
   const openForecastDerivation = (
     row
