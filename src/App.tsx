@@ -3,6 +3,7 @@ import React from 'react';
 import {
   SAP_ORDER_URL,
   SAP_MP_URL,
+  makeWomaUrl,
 } from './data/misc';
 import {
   calculateForecastStartAdvice,
@@ -2124,11 +2125,24 @@ function AvailabilityCell({
             {availability.symbol}
           </span>
 
-          {showLabel && (
+          {showLabel &&
+            row.workOrderId &&
+            row.plant ? (
+            <span className="min-w-0 truncate">
+              <a
+                href={makeWomaUrl(row.plant, row.workOrderId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`View Material Availability for ${row.workOrderId}`}
+                className={`text-sky-700 underline underline-offset-2 hover:text-sky-900`}
+              >{availability.label}</a>
+            </span>
+          ) : (
             <span className="min-w-0 truncate">
               {availability.label}
             </span>
-          )}
+          )
+          }
         </>
       )}
     </div>
@@ -2920,7 +2934,28 @@ function BarAnnotation({
           title={`Material availability ${row.availability}: ${availability.label}`}
           aria-label={`Material availability ${row.availability}: ${availability.label}`}
         >
-          {availability.symbol}
+          {row.workOrderId &&
+            row.plant ? (
+            <a href={makeWomaUrl(
+              row.plant,
+              row.workOrderId
+            )}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`View Material Availability for ${row.workOrderId}`}
+              className="cursor-pointer hover:opacity-70"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              {availability.symbol}
+            </a>
+          ) : (
+            availability.symbol
+          )}
         </span>
       )}
 
