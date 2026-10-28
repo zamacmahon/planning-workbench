@@ -21,6 +21,52 @@ interface ForecastResult {
   warningDetail: string | null;
 }
 
+export interface ForecastDerivationCall {
+  id: string;
+  mpCall: number;
+  description: string;
+
+  plannedMs: number | null;
+  completedMs: number | null;
+
+  isCompleted: boolean;
+
+  completionHours: number | null;
+  forecastMs: number | null;
+  forecastHours: number | null;
+
+  forecastSource:
+  ForecastSource | null;
+
+  warning:
+  ForecastWarning | null;
+
+  warningDetail:
+  string | null;
+}
+
+export interface ForecastDerivation {
+  maintenancePlanId: number;
+  selectedCall: number;
+
+  asset: string;
+  counter: number | null;
+  counterDescription:
+  string | null;
+  strategy: string | null;
+
+  calls:
+  ForecastDerivationCall[];
+
+  predictorSnapshot:
+  ReturnType<
+    Predictor['getSnapshot']
+  > | null;
+
+  predictorError:
+  string | null;
+}
+
 const predictorByCounter =
   new Map();
 
@@ -401,6 +447,169 @@ for (
   }
 }
 
+export function deriveForecastExplanation(
+  item
+): ForecastDerivation | null {
+  if (
+    item.maintenancePlanId == null ||
+    item.maintenancePlanCall == null
+  ) {
+    return null;
+  }
+
+  const maintenancePlanId =
+    item.maintenancePlanId;
+
+  const selectedCall =
+    item.maintenancePlanCall;
+
+  const calls =
+    orderedPlanCallsByMaintenancePlan.get(
+      maintenancePlanId
+    );
+
+  if (!calls) {
+    return null;
+  }
+
+  const strategy =
+    planCalls.find(
+      (call) =>
+        call.mp ===
+        maintenancePlanId &&
+        call.strat != null
+    )?.strat ?? null;
+
+  const counter =
+    calls.find(
+      (call) =>
+        call.counter != null
+    )?.counter ?? null;
+
+  const predictor =
+    counter == null
+      ? null
+      : predictorByCounter.get(
+        counter
+      ) ?? null;
+
+  const predictorError =
+    counter == null
+      ? null
+      : predictorErrorByCounter.get(
+        counter
+      ) ?? null;
+
+  const derivationCalls =
+    calls.map(
+      (call) => {
+        let completionHours = null;
+
+        if (
+          call.isCompleted &&
+          call.completed != null &&
+          predictor
+        ) {
+          try {
+            completionHours =
+              predictor.predictY(
+                call.completed
+              );
+          } catch {
+            completionHours = null;
+          }
+        }
+
+        const forecast =
+          forecastByPlanCall.get(
+            getPlanCallKey(
+              call
+            )
+          ) ?? null;
+
+        return {
+          id: call.id,
+          mpCall:
+            call.mpCall,
+          description:
+            call.desc,
+
+          plannedMs:
+            call.planned == null
+              ? null
+              : Date.parse(
+                call.planned
+              ),
+
+          completedMs:
+            call.completed == null
+              ? null
+              : Date.parse(
+                call.completed
+              ),
+
+          isCompleted:
+            Boolean(
+              call.isCompleted
+            ),
+
+          completionHours,
+
+          forecastMs:
+            forecast?.forecastMs ??
+            null,
+
+          forecastHours:
+            forecast?.forecastHours ??
+            null,
+
+          forecastSource:
+            forecast?.source ??
+            null,
+
+          warning:
+            forecast?.warning ??
+            null,
+
+          warningDetail:
+            forecast?.warningDetail ??
+            null,
+        };
+      }
+    );
+
+  return {
+    maintenancePlanId,
+    selectedCall,
+
+    asset:
+      item.asset,
+
+    counter,
+
+    counterDescription:
+      counter == null
+        ? null
+        : counters.find(
+          (definition) =>
+            definition.counter ===
+            counter
+        )?.longDesc ?? null,
+
+    strategy,
+
+    calls:
+      derivationCalls,
+
+    predictorSnapshot:
+      predictor
+        ? predictor.getSnapshot()
+        : null,
+
+    predictorError,
+  };
+}
+
 const firstOperationIdByOrder =
   new Map();
 
@@ -622,9 +831,9 @@ export function calculateForecastStartAdvice(
 ) {
   const forecastDeviationMs =
     item.startMs != null &&
-    item.forecastMs != null
+      item.forecastMs != null
       ? item.startMs -
-        item.forecastMs
+      item.forecastMs
       : null;
 
   if (
@@ -678,7 +887,7 @@ export function calculateForecastStartAdvice(
       item.forecastHours == null
         ? null
         : expectedStartHours -
-          item.forecastHours;
+        item.forecastHours;
 
     return {
       expectedStartHours,

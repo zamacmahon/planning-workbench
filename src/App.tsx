@@ -3,6 +3,7 @@ import React from 'react';
 import { SAP_ORDER_URL } from './data/misc';
 import {
   calculateForecastStartAdvice,
+  deriveForecastExplanation,
   workItems,
 } from './data/workItems';
 import { resourceDefinitions } from './data/resources';
@@ -352,11 +353,10 @@ function formatSignedDuration(
       return '0d';
     }
 
-    return `${
-      durationMs > 0
-        ? '+'
-        : '-'
-    }${roundedDays}d`;
+    return `${durationMs > 0
+      ? '+'
+      : '-'
+      }${roundedDays}d`;
   }
 
   const roundedHours =
@@ -368,11 +368,10 @@ function formatSignedDuration(
     return '0h';
   }
 
-  return `${
-    durationMs > 0
-      ? '+'
-      : '-'
-  }${roundedHours}h`;
+  return `${durationMs > 0
+    ? '+'
+    : '-'
+    }${roundedHours}h`;
 }
 
 function formatForecastStartAdvice(
@@ -1144,7 +1143,6 @@ function deriveRows(
           item.forecastDeviationMs,
         forecastAdviceWarning:
           item.forecastAdviceWarning,
-        workOrderId: item.workOrderId,
         workOrderId: item.workOrderId,
         description: item.description,
         isStoppageReason: true,
@@ -2225,6 +2223,7 @@ function formatForecastWarning(
 function ForecastCell({
   row,
   scrollToTime,
+  openForecastDerivation,
 }) {
   if (row.forecastMs == null) {
     return (
@@ -2259,18 +2258,25 @@ function ForecastCell({
 
   return (
     <div className="flex items-center gap-1 whitespace-nowrap border-r px-2">
-      <span
+      <button
         className={
           row.forecastWarning
-            ? 'cursor-help text-amber-700'
-            : 'cursor-help text-slate-500'
+            ? 'shrink-0 text-amber-700 hover:text-amber-900'
+            : 'shrink-0 text-slate-500 hover:text-slate-900'
         }
-        title={tooltip}
+        title={`${tooltip}\nClick to view forecast derivation.`}
+        onClick={(event) => {
+          event.stopPropagation();
+
+          openForecastDerivation(
+            row
+          );
+        }}
       >
         {getForecastSourceSymbol(
           row
         )}
-      </span>
+      </button>
 
       <span title={tooltip}>
         {formatDateTime(
@@ -2739,6 +2745,7 @@ function ActionCell({
 
 function TableRow({
   row,
+  openForecastDerivation,
   hovered,
   setHoveredRowId,
   startResourceHover,
@@ -2779,6 +2786,7 @@ function TableRow({
 
   const cellProps = {
     row,
+    openForecastDerivation,
     hoveredActionGroupKey,
     setHoveredActionGroupKey,
     finishMs,
@@ -4091,6 +4099,7 @@ function PanelResizeHandle({
 
 function ItemsPanel({
   rows,
+  openForecastDerivation,
   hoveredRowId,
   setHoveredRowId,
   flashedRowIds,
@@ -4629,6 +4638,9 @@ function ItemsPanel({
               {rows.map((row) => (
                 <TableRow
                   key={`table-${row.rowKey}`}
+                  openForecastDerivation={
+                    openForecastDerivation
+                  }
                   row={row}
                   hovered={
                     hoveredRowId === row.id
@@ -6417,6 +6429,305 @@ function ResourceCapacityScreen({
   );
 }
 
+function ForecastDerivationModal({
+  item,
+  close,
+}) {
+  if (!item) {
+    return null;
+  }
+
+  const derivation =
+    deriveForecastExplanation(
+      item
+    );
+
+  if (!derivation) {
+    return null;
+  }
+
+  const selectedCall =
+    derivation.calls.find(
+      (call) =>
+        call.mpCall ===
+        derivation.selectedCall
+    ) ?? null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-6"
+      onPointerDown={(event) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          close();
+        }
+      }}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded border border-slate-300 bg-white shadow-xl">
+        <header className="flex items-start justify-between border-b border-slate-300 px-4 py-3">
+          <div>
+            <h2 className="text-base font-semibold">
+              Forecast Derivation
+            </h2>
+
+            <div className="mt-1 text-xs text-slate-600">
+              {derivation.asset}
+              {' · '}
+              Plan {
+                derivation.maintenancePlanId
+              }
+              {' · '}
+              Call {
+                derivation.selectedCall
+              }
+            </div>
+
+            {derivation.counter != null && (
+              <div className="text-xs text-slate-600">
+                Counter {
+                  derivation.counter
+                }
+                {derivation.counterDescription
+                  ? ` · ${derivation.counterDescription}`
+                  : ''}
+              </div>
+            )}
+          </div>
+
+          <button
+            className="px-2 py-1 text-sm text-slate-500 hover:text-slate-950"
+            onClick={close}
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="min-h-0 overflow-auto p-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <section className="border border-slate-200 p-3">
+              <h3 className="mb-2 text-xs font-semibold">
+                Selected Forecast
+              </h3>
+
+              <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-slate-500">
+                  Description
+                </dt>
+                <dd>
+                  {selectedCall?.description ??
+                    item.description}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Strategy
+                </dt>
+                <dd>
+                  {derivation.strategy ??
+                    '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Forecast date
+                </dt>
+                <dd>
+                  {selectedCall?.forecastMs != null
+                    ? formatFullDateTime(
+                        selectedCall.forecastMs
+                      )
+                    : '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Forecast usage
+                </dt>
+                <dd>
+                  {selectedCall?.forecastHours != null
+                    ? `${formatResourceQuantity(
+                        selectedCall.forecastHours
+                      )} hrs`
+                    : '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Source
+                </dt>
+                <dd>
+                  {selectedCall?.forecastSource ??
+                    '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Warning
+                </dt>
+                <dd>
+                  {selectedCall?.warningDetail ??
+                    selectedCall?.warning ??
+                    'None'}
+                </dd>
+              </dl>
+            </section>
+
+            <section className="border border-slate-200 p-3">
+              <h3 className="mb-2 text-xs font-semibold">
+                Predictor
+              </h3>
+
+              <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-slate-500">
+                  Counter
+                </dt>
+                <dd>
+                  {derivation.counter ??
+                    '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Readings
+                </dt>
+                <dd>
+                  {derivation.predictorSnapshot
+                    ?.points.length ?? 0}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Direction
+                </dt>
+                <dd>
+                  {derivation.predictorSnapshot
+                    ?.direction ?? '—'}
+                </dd>
+
+                <dt className="text-slate-500">
+                  Predictor error
+                </dt>
+                <dd>
+                  {derivation.predictorError ??
+                    'None'}
+                </dd>
+              </dl>
+            </section>
+          </div>
+
+          <section className="mt-4 border border-slate-200">
+            <div className="border-b border-slate-200 px-3 py-2 text-xs font-semibold">
+              Maintenance Plan Calls
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-2 py-1">
+                      Call
+                    </th>
+                    <th className="px-2 py-1">
+                      Description
+                    </th>
+                    <th className="px-2 py-1">
+                      Status
+                    </th>
+                    <th className="px-2 py-1">
+                      Completed
+                    </th>
+                    <th className="px-2 py-1">
+                      Completion Usage
+                    </th>
+                    <th className="px-2 py-1">
+                      Forecast
+                    </th>
+                    <th className="px-2 py-1">
+                      Forecast Usage
+                    </th>
+                    <th className="px-2 py-1">
+                      Source
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {derivation.calls.map(
+                    (call) => {
+                      const selected =
+                        call.mpCall ===
+                        derivation.selectedCall;
+
+                      return (
+                        <tr
+                          key={call.id}
+                          className={
+                            selected
+                              ? 'bg-emerald-50 font-medium'
+                              : 'border-t border-slate-100'
+                          }
+                        >
+                          <td className="px-2 py-1">
+                            {call.mpCall}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.description}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {selected
+                              ? 'Selected'
+                              : call.isCompleted
+                                ? 'Completed'
+                                : 'Future'}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.completedMs != null
+                              ? formatFullDateTime(
+                                  call.completedMs
+                                )
+                              : '—'}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.completionHours != null
+                              ? formatResourceQuantity(
+                                  call.completionHours
+                                )
+                              : '—'}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.forecastMs != null
+                              ? formatFullDateTime(
+                                  call.forecastMs
+                                )
+                              : '—'}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.forecastHours != null
+                              ? formatResourceQuantity(
+                                  call.forecastHours
+                                )
+                              : '—'}
+                          </td>
+
+                          <td className="px-2 py-1">
+                            {call.forecastSource ??
+                              '—'}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlanningGrid() {
   const [screen, setScreen] = React.useState<
     'planning' | 'resourceCapacity'
@@ -6583,6 +6894,11 @@ export default function PlanningGrid() {
       item,
     ])
   );
+
+  const [
+    forecastDerivationItem,
+    setForecastDerivationItem,
+  ] = React.useState(null);
 
   const [
     hoveredRowId,
@@ -6769,6 +7085,21 @@ export default function PlanningGrid() {
     timelineGeometry.startMs,
     timelineGeometry.endMs
   );
+
+  const openForecastDerivation = (
+    row
+  ) => {
+    if (
+      row.maintenancePlanId == null ||
+      row.maintenancePlanCall == null
+    ) {
+      return;
+    }
+
+    setForecastDerivationItem(
+      row
+    );
+  };
 
   const scrollToTime = (
     targetMs
@@ -7316,6 +7647,16 @@ export default function PlanningGrid() {
 
   return (
     <div className="flex h-screen flex-col bg-white text-slate-950">
+      <ForecastDerivationModal
+        item={
+          forecastDerivationItem
+        }
+        close={() =>
+          setForecastDerivationItem(
+            null
+          )
+        }
+      />
       <header className="border-b border-slate-300 px-4 py-2">
         <h1 className="text-xl font-bold">Planning grid / stoppage mockup</h1>
         <p className="text-xs text-slate-700">
@@ -7384,6 +7725,9 @@ export default function PlanningGrid() {
                 )}
                 <ItemsPanel
                   rows={rows}
+                  openForecastDerivation={
+                    openForecastDerivation
+                  }
                   hoveredRowId={
                     hoveredRowId
                   }

@@ -26,6 +26,29 @@ export interface XPrediction {
   method: PredictionMethod;
 }
 
+export interface PredictorRegression {
+  anchorX: Date;
+  anchorY: number;
+  slopePerDay: number;
+}
+
+export interface PredictorSnapshot {
+  points: Array<{
+    x: Date;
+    y: number;
+  }>;
+
+  direction:
+  | 'increasing'
+  | 'decreasing';
+
+  beforeFirst:
+  PredictorRegression;
+
+  afterLast:
+  PredictorRegression;
+}
+
 interface NormalisedPoint {
   time: number;
   value: number;
@@ -133,6 +156,18 @@ const MILLISECONDS_PER_DAY = 86_400_000;
  * ```ts
  * const predictions = predictor.predictManyX([5, 20, 50]);
  * ```
+ * 
+ * * Get a diagnostic snapshot for charting or inspection:
+  *
+  * ```ts
+  * const snapshot =
+  *   predictor.getSnapshot();
+  *
+  * console.log(snapshot.points);
+  * console.log(snapshot.beforeFirst);
+  * console.log(snapshot.afterLast);
+  * ```
+  *
  *
  * Get the endpoint regression slopes:
  *
@@ -385,13 +420,48 @@ export class Predictor {
   }
 
   /**
-   * Returns a copy of the sorted, normalised points.
-   */
-  getPoints(): Array<{ x: Date; y: number }> {
-    return this.points.map((point) => ({
-      x: new Date(point.time),
-      y: point.value,
-    }));
+ * Returns an immutable diagnostic snapshot of the predictor.
+ *
+ * The snapshot contains the sorted source points and the anchored
+ * regression definitions used for extrapolation before the first
+ * point and after the last point.
+ */
+  getSnapshot(): PredictorSnapshot {
+    return {
+      points: this.points.map(
+        (point) => ({
+          x: new Date(
+            point.time
+          ),
+          y: point.value,
+        })
+      ),
+
+      direction:
+        this.direction === 1
+          ? 'increasing'
+          : 'decreasing',
+
+      beforeFirst: {
+        anchorX: new Date(
+          this.firstPoint.time
+        ),
+        anchorY:
+          this.firstPoint.value,
+        slopePerDay:
+          this.firstSlopePerDay,
+      },
+
+      afterLast: {
+        anchorX: new Date(
+          this.lastPoint.time
+        ),
+        anchorY:
+          this.lastPoint.value,
+        slopePerDay:
+          this.lastSlopePerDay,
+      },
+    };
   }
 
   private validateUniqueTimes(): void {
@@ -413,7 +483,7 @@ export class Predictor {
 
     if (lastValue === firstValue) {
       throw new Error(
-        "The y values must be strictly increasing or strictly decreasing.",
+        "The y values cannot be entirely flat.",
       );
     }
 
