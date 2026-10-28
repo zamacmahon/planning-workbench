@@ -25,6 +25,7 @@ import type {
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 const SNAP = 15 * MINUTE;
 const DEFAULT_TIMELINE_START = Date.parse('2026-10-26T06:00:00+08:00');
 const DEFAULT_TIMELINE_END = DEFAULT_TIMELINE_START + 7 * 24 * 60 * 60 * 1000;
@@ -1276,7 +1277,6 @@ function deriveRows(
               item.forecastDeviationMs,
             forecastAdviceWarning:
               item.forecastAdviceWarning,
-            workOrderId: item.workOrderId,
             workOrderId: item.workOrderId,
             description: item.description,
             isStoppageReason: true,
@@ -6429,6 +6429,2143 @@ function ResourceCapacityScreen({
   );
 }
 
+const FORECAST_CHART = {
+  width: 1000,
+  height: 440,
+
+  margin: {
+    top: 30,
+    right: 40,
+    bottom: 50,
+    left: 70,
+  },
+
+  colour: {
+    reading: '#1e3a8a',
+    interpolation: '#0891b2',
+    extrapolationBefore: '#16a34a',
+    extrapolationAfter: '#2563eb',
+
+    completedCallFill: '#fecaca',
+    completedCallStroke: '#ef4444',
+
+    forecastCallFill: '#f8fafc',
+    forecastCallStroke: '#475569',
+
+    baselineCallFill: '#fed7aa',
+    baselineCallStroke: '#ea580c',
+    baselineGuide: '#f97316',
+
+    selectedCallFill: '#22c55e',
+    selectedCallStroke: '#15803d',
+    selectedGuide: '#16a34a',
+
+    axis: '#475569',
+    axisText: '#64748b',
+    grid: '#e2e8f0',
+    minorGrid: '#f1f5f9',
+  },
+
+  radius: {
+    reading: 2.25,
+  },
+
+  callMarker: {
+    normalSize: 6,
+    baselineSize: 8,
+    selectedSize: 8,
+
+    normalStrokeWidth: 1,
+    baselineStrokeWidth: 2,
+    selectedStrokeWidth: 2,
+  },
+
+  line: {
+    interpolationWidth: 1.25,
+    extrapolationWidth: 1.5,
+    guideWidth: 1,
+    gridWidth: 1,
+
+    dash: '3 3',
+    guideDash: '4 4',
+    baselineGuideDash: '6 3',
+  },
+
+  opacity: {
+    reading: 0.75,
+  },
+
+  label: {
+    usageOffsetX: 8,
+    usageOffsetY: 6,
+    dateOffsetX: 8,
+    dateOffsetY: 8,
+
+    selectedDescriptionOffsetX: 16,
+    selectedDescriptionOffsetY: 0,
+
+    baselineDescriptionOffsetX: 16,
+    baselineDescriptionOffsetY: 0,
+
+    fontSize: 10,
+    descriptionFontSize: 10,
+  },
+
+  tick: {
+    preferredYCount: 6,
+    preferredXCount: 6,
+
+    smallYStep: 250,
+    mediumYStep: 500,
+    largeYStep: 1000,
+
+    defaultDaySteps: [
+      1,
+      2,
+      7,
+      14,
+      30,
+      60,
+      90,
+      180,
+      365,
+    ],
+  },
+};
+
+function getForecastChartYStep(
+  range
+) {
+  const target =
+    range /
+    FORECAST_CHART.tick
+      .preferredYCount;
+
+  if (
+    target <=
+    FORECAST_CHART.tick.smallYStep
+  ) {
+    return FORECAST_CHART.tick
+      .smallYStep;
+  }
+
+  if (
+    target <=
+    FORECAST_CHART.tick.mediumYStep
+  ) {
+    return FORECAST_CHART.tick
+      .mediumYStep;
+  }
+
+  if (
+    target <=
+    FORECAST_CHART.tick.largeYStep
+  ) {
+    return FORECAST_CHART.tick
+      .largeYStep;
+  }
+
+  return (
+    Math.ceil(
+      target / 1000
+    ) * 1000
+  );
+}
+
+function createNumericTicks(
+  start,
+  end,
+  step
+) {
+  const ticks = [];
+
+  for (
+    let value = start;
+    value <= end;
+    value += step
+  ) {
+    ticks.push(value);
+  }
+
+  return ticks;
+}
+
+function getForecastChartDayStep(
+  rangeDays
+) {
+  const targetStep =
+    rangeDays /
+    FORECAST_CHART.tick
+      .preferredXCount;
+
+  return (
+    FORECAST_CHART.tick
+      .defaultDaySteps
+      .find(
+        (step) =>
+          step >= targetStep
+      ) ??
+    Math.ceil(
+      targetStep / 365
+    ) * 365
+  );
+}
+
+function getForecastChartDefaults(
+  derivation
+) {
+  const snapshot =
+    derivation.predictorSnapshot;
+
+  const callDates =
+    derivation.calls.flatMap(
+      (call) => [
+        call.completedMs,
+        call.forecastMs,
+      ].filter(
+        (value) =>
+          value != null
+      )
+    );
+
+  const readingDates =
+    snapshot?.points.map(
+      (point) =>
+        point.x.getTime()
+    ) ?? [];
+
+  const dates = [
+    ...readingDates,
+    ...callDates,
+  ];
+
+  const rawStartMs =
+    Math.min(...dates);
+
+  const rawEndMs =
+    Math.max(...dates);
+
+  const rawRangeMs =
+    Math.max(
+      DAY,
+      rawEndMs -
+      rawStartMs
+    );
+
+  const paddingMs =
+    Math.max(
+      DAY,
+      rawRangeMs * 0.05
+    );
+
+  const startMs =
+    rawStartMs -
+    paddingMs;
+
+  const endMs =
+    rawEndMs +
+    paddingMs;
+
+  const rangeDays =
+    (
+      endMs -
+      startMs
+    ) /
+    DAY;
+
+  return {
+    startMs,
+    endMs,
+    dayStep:
+      getForecastChartDayStep(
+        rangeDays
+      ),
+  };
+}
+
+function formatForecastChartDate(
+  value,
+  includeYear
+) {
+  const date =
+    new Date(value);
+
+  const day =
+    date.getDate();
+
+  const month =
+    String(
+      date.getMonth() + 1
+    ).padStart(
+      2,
+      '0'
+    );
+
+  if (!includeYear) {
+    return `${day}/${month}`;
+  }
+
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+function ForecastDerivationChartControls({
+  config,
+  setConfig,
+  reset,
+}) {
+  const setDate = (
+    key,
+    value
+  ) => {
+    const parsed =
+      Date.parse(
+        `${value}T00:00:00+08:00`
+      );
+
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    setConfig(
+      (current) => ({
+        ...current,
+        [key]: parsed,
+      })
+    );
+  };
+
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-3 border-b border-slate-200 pb-3">
+      <label className="grid gap-1 text-[11px]">
+        <span>Chart start</span>
+
+        <input
+          type="date"
+          className="h-8 border border-slate-300 bg-white px-2 text-xs"
+          value={formatDateInput(
+            config.startMs
+          )}
+          onChange={(event) =>
+            setDate(
+              'startMs',
+              event.target.value
+            )
+          }
+        />
+      </label>
+
+      <label className="grid gap-1 text-[11px]">
+        <span>Chart end</span>
+
+        <input
+          type="date"
+          className="h-8 border border-slate-300 bg-white px-2 text-xs"
+          value={formatDateInput(
+            config.endMs
+          )}
+          onChange={(event) =>
+            setDate(
+              'endMs',
+              event.target.value
+            )
+          }
+        />
+      </label>
+
+      <label className="grid gap-1 text-[11px]">
+        <span>Tick interval</span>
+
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            className="h-8 w-20 border border-slate-300 bg-white px-2 text-xs"
+            value={
+              config.dayStep
+            }
+            onChange={(event) => {
+              const dayStep =
+                Math.max(
+                  1,
+                  Math.round(
+                    Number(
+                      event.target.value
+                    )
+                  )
+                );
+
+              if (
+                !Number.isFinite(
+                  dayStep
+                )
+              ) {
+                return;
+              }
+
+              setConfig(
+                (current) => ({
+                  ...current,
+                  dayStep,
+                })
+              );
+            }}
+          />
+
+          <span className="text-xs text-slate-500">
+            days
+          </span>
+        </div>
+      </label>
+
+      <button
+        type="button"
+        className="h-8 border border-slate-300 bg-white px-3 text-xs hover:bg-slate-50"
+        onClick={reset}
+      >
+        Reset
+      </button>
+    </div>
+  );
+}
+
+function ForecastDerivationChart({
+  derivation,
+  config,
+  baselineCall,
+}) {
+  const snapshot =
+    derivation.predictorSnapshot;
+
+  if (
+    !snapshot ||
+    snapshot.points.length === 0
+  ) {
+    return (
+      <div className="flex h-80 items-center justify-center text-xs text-slate-500">
+        No predictor data available.
+      </div>
+    );
+  }
+
+  const {
+    width,
+    height,
+    margin,
+  } = FORECAST_CHART;
+
+  const plotWidth =
+    width -
+    margin.left -
+    margin.right;
+
+  const plotHeight =
+    height -
+    margin.top -
+    margin.bottom;
+
+  const callPoints =
+    derivation.calls
+      .map((call) => {
+        if (
+          call.isCompleted &&
+          call.completedMs != null &&
+          call.completionHours != null
+        ) {
+          return {
+            call,
+            x: call.completedMs,
+            y: call.completionHours,
+          };
+        }
+
+        if (
+          !call.isCompleted &&
+          call.forecastMs != null &&
+          call.forecastHours != null
+        ) {
+          return {
+            call,
+            x: call.forecastMs,
+            y: call.forecastHours,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+  const selectedPoint =
+    callPoints.find(
+      (point) =>
+        point.call.mpCall ===
+        derivation.selectedCall
+    ) ?? null;
+
+  const baselinePoint =
+    baselineCall == null
+      ? null
+      : callPoints.find(
+        (point) =>
+          point.call.id ===
+          baselineCall.id
+      ) ?? null;
+
+  const allX = [
+    ...snapshot.points.map(
+      (point) =>
+        point.x.getTime()
+    ),
+    ...callPoints.map(
+      (point) => point.x
+    ),
+  ];
+
+  const allY = [
+    ...snapshot.points.map(
+      (point) => point.y
+    ),
+    ...callPoints.map(
+      (point) => point.y
+    ),
+  ];
+
+  const rawMinX =
+    Math.min(...allX);
+
+  const rawMaxX =
+    Math.max(...allX);
+
+  const rawMinY =
+    Math.min(...allY);
+
+  const rawMaxY =
+    Math.max(...allY);
+
+  const minX =
+    config.startMs;
+
+  const maxX =
+    config.endMs;
+
+  const rawYRange =
+    Math.max(
+      1,
+      rawMaxY -
+      rawMinY
+    );
+
+  const yStep =
+    getForecastChartYStep(
+      rawYRange
+    );
+
+  const minY =
+    Math.floor(
+      rawMinY / yStep
+    ) * yStep;
+
+  const maxY =
+    Math.ceil(
+      rawMaxY / yStep
+    ) * yStep;
+
+  const xAt = (
+    value
+  ) =>
+    margin.left +
+    (
+      (
+        value -
+        minX
+      ) /
+      (
+        maxX -
+        minX
+      )
+    ) *
+    plotWidth;
+
+  const yAt = (
+    value
+  ) =>
+    margin.top +
+    (
+      1 -
+      (
+        value -
+        minY
+      ) /
+      (
+        maxY -
+        minY
+      )
+    ) *
+    plotHeight;
+
+  const xTicks = [];
+
+  for (
+    let value = minX;
+    value <= maxX;
+    value +=
+    config.dayStep * DAY
+  ) {
+    xTicks.push(value);
+  }
+
+  if (
+    xTicks[
+    xTicks.length - 1
+    ] !== maxX
+  ) {
+    xTicks.push(maxX);
+  }
+
+  const yTicks =
+    createNumericTicks(
+      minY,
+      maxY,
+      yStep
+    );
+
+  const readingPath =
+    snapshot.points
+      .map(
+        (point, index) =>
+          `${index === 0
+            ? 'M'
+            : 'L'
+          } ${xAt(
+            point.x.getTime()
+          )} ${yAt(
+            point.y
+          )}`
+      )
+      .join(' ');
+
+  const daysBetween = (
+    valueMs,
+    anchorMs
+  ) =>
+    (
+      valueMs -
+      anchorMs
+    ) /
+    DAY;
+
+  const beforeRegressionY =
+    snapshot.beforeFirst.anchorY +
+    snapshot.beforeFirst.slopePerDay *
+    daysBetween(
+      minX,
+      snapshot.beforeFirst.anchorX.getTime()
+    );
+
+  const afterRegressionY =
+    snapshot.afterLast.anchorY +
+    snapshot.afterLast.slopePerDay *
+    daysBetween(
+      maxX,
+      snapshot.afterLast.anchorX.getTime()
+    );
+
+  return (
+    <div className="overflow-x-auto">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="min-w-[800px] w-full"
+        role="img"
+        aria-label="Maintenance forecast derivation"
+      >
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="white"
+        />
+
+        <g
+          transform={`translate(${margin.left} 12)`}
+          fontSize={9}
+          fill={
+            FORECAST_CHART.colour.axis
+          }
+        >
+          <g transform="translate(0 0)">
+            <circle
+              cx={4}
+              cy={0}
+              r={
+                FORECAST_CHART.radius
+                  .reading
+              }
+              fill={
+                FORECAST_CHART.colour
+                  .reading
+              }
+              opacity={
+                FORECAST_CHART.opacity
+                  .reading
+              }
+            />
+
+            <text
+              x={12}
+              y={0}
+              dominantBaseline="middle"
+            >
+              reading
+            </text>
+          </g>
+
+          <g transform="translate(70 0)">
+            <line
+              x1={0}
+              y1={0}
+              x2={20}
+              y2={0}
+              stroke={
+                FORECAST_CHART.colour
+                  .interpolation
+              }
+              strokeWidth={
+                FORECAST_CHART.line
+                  .interpolationWidth
+              }
+            />
+
+            <text
+              x={26}
+              y={0}
+              dominantBaseline="middle"
+            >
+              interpolated usage
+            </text>
+          </g>
+
+          <g transform="translate(225 0)">
+            <line
+              x1={0}
+              y1={0}
+              x2={20}
+              y2={0}
+              stroke={
+                FORECAST_CHART.colour
+                  .extrapolationAfter
+              }
+              strokeWidth={
+                FORECAST_CHART.line
+                  .extrapolationWidth
+              }
+              strokeDasharray={
+                FORECAST_CHART.line
+                  .dash
+              }
+            />
+
+            <text
+              x={26}
+              y={0}
+              dominantBaseline="middle"
+            >
+              extrapolated
+            </text>
+          </g>
+
+          <g transform="translate(330 0)">
+            <rect
+              x={-4}
+              y={-4}
+              width={8}
+              height={8}
+              transform="rotate(45)"
+              fill={
+                FORECAST_CHART.colour
+                  .completedCallFill
+              }
+              stroke={
+                FORECAST_CHART.colour
+                  .completedCallStroke
+              }
+            />
+
+            <text
+              x={12}
+              y={0}
+              dominantBaseline="middle"
+            >
+              completed call
+            </text>
+          </g>
+
+          <g transform="translate(425 0)">
+            <rect
+              x={-4}
+              y={-4}
+              width={8}
+              height={8}
+              transform="rotate(45)"
+              fill={
+                FORECAST_CHART.colour
+                  .baselineCallFill
+              }
+              stroke={
+                FORECAST_CHART.colour
+                  .baselineCallStroke
+              }
+            />
+
+            <text
+              x={12}
+              y={0}
+              dominantBaseline="middle"
+            >
+              baseline
+            </text>
+          </g>
+
+          <g transform="translate(500 0)">
+            <rect
+              x={-4}
+              y={-4}
+              width={8}
+              height={8}
+              transform="rotate(45)"
+              fill={
+                FORECAST_CHART.colour
+                  .forecastCallFill
+              }
+              stroke={
+                FORECAST_CHART.colour
+                  .forecastCallStroke
+              }
+            />
+
+            <text
+              x={12}
+              y={0}
+              dominantBaseline="middle"
+            >
+              forecast call
+            </text>
+          </g>
+        </g>
+
+        {yTicks.map(
+          (value) => {
+            const y =
+              yAt(value);
+
+            return (
+              <React.Fragment
+                key={`y-${value}`}
+              >
+                <line
+                  x1={margin.left}
+                  y1={y}
+                  x2={
+                    width -
+                    margin.right
+                  }
+                  y2={y}
+                  stroke={
+                    FORECAST_CHART.colour
+                      .grid
+                  }
+                  strokeWidth={
+                    FORECAST_CHART.line
+                      .gridWidth
+                  }
+                />
+
+                <text
+                  x={
+                    margin.left -
+                    8
+                  }
+                  y={y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize={10}
+                  fill={
+                    FORECAST_CHART.colour
+                      .axisText
+                  }
+                >
+                  {Math.round(
+                    value
+                  )}
+                </text>
+              </React.Fragment>
+            );
+          }
+        )}
+
+        {xTicks.map(
+          (value, index) => {
+            const x =
+              xAt(value);
+
+            return (
+              <React.Fragment
+                key={`x-${value}`}
+              >
+                <line
+                  x1={x}
+                  y1={margin.top}
+                  x2={x}
+                  y2={
+                    height -
+                    margin.bottom
+                  }
+                  stroke={
+                    FORECAST_CHART.colour
+                      .minorGrid
+                  }
+                  strokeWidth={
+                    FORECAST_CHART.line
+                      .gridWidth
+                  }
+                />
+
+                <text
+                  x={x}
+                  y={
+                    height -
+                    margin.bottom +
+                    18
+                  }
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill={
+                    FORECAST_CHART.colour
+                      .axisText
+                  }
+                >
+                  {formatForecastChartDate(
+                    value,
+                    index === 0 ||
+                    (
+                      index > 0 &&
+                      new Date(
+                        value
+                      ).getFullYear() !==
+                      new Date(
+                        xTicks[
+                        index - 1
+                        ]
+                      ).getFullYear()
+                    )
+                  )}
+                </text>
+              </React.Fragment>
+            );
+          }
+        )}
+
+        <line
+          x1={margin.left}
+          y1={margin.top}
+          x2={margin.left}
+          y2={
+            height -
+            margin.bottom
+          }
+          stroke={
+            FORECAST_CHART.colour
+              .axis
+          }
+          strokeWidth={1}
+        />
+
+        <line
+          x1={margin.left}
+          y1={
+            height -
+            margin.bottom
+          }
+          x2={
+            width -
+            margin.right
+          }
+          y2={
+            height -
+            margin.bottom
+          }
+          stroke={
+            FORECAST_CHART.colour
+              .axis
+          }
+          strokeWidth={1}
+        />
+
+        <text
+          x={16}
+          y={
+            margin.top +
+            plotHeight / 2
+          }
+          transform={`rotate(-90 16 ${margin.top +
+            plotHeight / 2
+            })`}
+          textAnchor="middle"
+          fontSize={11}
+          fill="#475569"
+        >
+          Cumulative usage (hrs)
+        </text>
+
+        <line
+          x1={xAt(minX)}
+          y1={yAt(
+            beforeRegressionY
+          )}
+          x2={xAt(
+            snapshot.beforeFirst.anchorX.getTime()
+          )}
+          y2={yAt(
+            snapshot.beforeFirst.anchorY
+          )}
+          stroke={
+            FORECAST_CHART.colour
+              .extrapolationBefore
+          }
+          strokeWidth={
+            FORECAST_CHART.line
+              .extrapolationWidth
+          }
+          strokeDasharray={
+            FORECAST_CHART.line
+              .dash
+          }
+        />
+
+        <path
+          d={readingPath}
+          fill="none"
+          stroke={
+            FORECAST_CHART.colour
+              .interpolation
+          }
+          strokeWidth={
+            FORECAST_CHART.line
+              .interpolationWidth
+          }
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        <line
+          x1={xAt(
+            snapshot.afterLast.anchorX.getTime()
+          )}
+          y1={yAt(
+            snapshot.afterLast.anchorY
+          )}
+          x2={xAt(maxX)}
+          y2={yAt(
+            afterRegressionY
+          )}
+          stroke={
+            FORECAST_CHART.colour
+              .extrapolationAfter
+          }
+          strokeWidth={
+            FORECAST_CHART.line
+              .extrapolationWidth
+          }
+          strokeDasharray={
+            FORECAST_CHART.line
+              .dash
+          }
+        />
+
+        {snapshot.points.map(
+          (point, index) => (
+            <circle
+              key={`reading-${index}`}
+              cx={xAt(
+                point.x.getTime()
+              )}
+              cy={yAt(
+                point.y
+              )}
+              r={
+                FORECAST_CHART.radius
+                  .reading
+              }
+              fill={
+                FORECAST_CHART.colour
+                  .reading
+              }
+              opacity={
+                FORECAST_CHART.opacity
+                  .reading
+              }
+            >
+              <title>
+                {`${formatFullDateTime(
+                  point.x.getTime()
+                )}\nUsage: ${formatResourceQuantity(
+                  point.y
+                )} hrs`}
+              </title>
+            </circle>
+          )
+        )}
+
+        {callPoints.map(
+          ({
+            call,
+            x,
+            y,
+          }) => {
+            const selected =
+              call.mpCall ===
+              derivation.selectedCall;
+
+            const baseline =
+              call.id ===
+              baselineCall?.id;
+
+            const completed =
+              call.isCompleted;
+
+            const cx =
+              xAt(x);
+
+            const cy =
+              yAt(y);
+
+            const size =
+              selected
+                ? FORECAST_CHART
+                  .callMarker
+                  .selectedSize
+                : baseline
+                  ? FORECAST_CHART
+                    .callMarker
+                    .baselineSize
+                  : FORECAST_CHART
+                    .callMarker
+                    .normalSize;
+
+            const fill =
+              selected
+                ? FORECAST_CHART.colour
+                  .selectedCallFill
+                : baseline
+                  ? FORECAST_CHART.colour
+                    .baselineCallFill
+                  : completed
+                    ? FORECAST_CHART.colour
+                      .completedCallFill
+                    : FORECAST_CHART.colour
+                      .forecastCallFill;
+
+            const stroke =
+              selected
+                ? FORECAST_CHART.colour
+                  .selectedCallStroke
+                : baseline
+                  ? FORECAST_CHART.colour
+                    .baselineCallStroke
+                  : completed
+                    ? FORECAST_CHART.colour
+                      .completedCallStroke
+                    : FORECAST_CHART.colour
+                      .forecastCallStroke;
+
+            const strokeWidth =
+              selected
+                ? FORECAST_CHART
+                  .callMarker
+                  .selectedStrokeWidth
+                : baseline
+                  ? FORECAST_CHART
+                    .callMarker
+                    .baselineStrokeWidth
+                  : FORECAST_CHART
+                    .callMarker
+                    .normalStrokeWidth;
+
+            return (
+              <g
+                key={`call-${call.id}`}
+              >
+                {baseline && (
+                  <>
+                    <line
+                      x1={margin.left}
+                      y1={cy}
+                      x2={cx}
+                      y2={cy}
+                      stroke={
+                        FORECAST_CHART.colour
+                          .baselineGuide
+                      }
+                      strokeDasharray={
+                        FORECAST_CHART.line
+                          .baselineGuideDash
+                      }
+                      strokeWidth={
+                        FORECAST_CHART.line
+                          .guideWidth
+                      }
+                    />
+
+                    <line
+                      x1={cx}
+                      y1={cy}
+                      x2={cx}
+                      y2={
+                        height -
+                        margin.bottom
+                      }
+                      stroke={
+                        FORECAST_CHART.colour
+                          .baselineGuide
+                      }
+                      strokeDasharray={
+                        FORECAST_CHART.line
+                          .baselineGuideDash
+                      }
+                      strokeWidth={
+                        FORECAST_CHART.line
+                          .guideWidth
+                      }
+                    />
+                  </>
+                )}
+
+                {selected && (
+                  <>
+                    <line
+                      x1={
+                        margin.left
+                      }
+                      y1={cy}
+                      x2={cx}
+                      y2={cy}
+                      stroke={
+                        FORECAST_CHART.colour
+                          .selectedGuide
+                      }
+                      strokeDasharray={
+                        FORECAST_CHART.line
+                          .guideDash
+                      }
+                      strokeWidth={
+                        FORECAST_CHART.line
+                          .guideWidth
+                      }
+                    />
+
+                    <line
+                      x1={cx}
+                      y1={cy}
+                      x2={cx}
+                      y2={
+                        height -
+                        margin.bottom
+                      }
+                      stroke={
+                        FORECAST_CHART.colour
+                          .selectedGuide
+                      }
+                      strokeDasharray={
+                        FORECAST_CHART.line
+                          .guideDash
+                      }
+                      strokeWidth={
+                        FORECAST_CHART.line
+                          .guideWidth
+                      }
+                    />
+                  </>
+                )}
+
+                <rect
+                  x={
+                    cx -
+                    size / 2
+                  }
+                  y={
+                    cy -
+                    size / 2
+                  }
+                  width={size}
+                  height={size}
+                  transform={`rotate(45 ${cx} ${cy})`}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={
+                    strokeWidth
+                  }
+                >
+                  <title>
+                    {[
+                      `Call ${call.mpCall}`,
+                      call.description,
+                      completed
+                        ? 'Completed'
+                        : 'Forecast',
+                      formatFullDateTime(
+                        x
+                      ),
+                      `${formatResourceQuantity(
+                        y
+                      )} hrs`,
+                    ].join('\n')}
+                  </title>
+                </rect>
+
+                <text
+                  x={cx}
+                  y={cy - 11}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontWeight={
+                    selected
+                      ? 600
+                      : 400
+                  }
+                  fill={stroke}
+                >
+                  {call.mpCall}
+                </text>
+              </g>
+            );
+          }
+        )}
+
+        {selectedPoint && (
+          <>
+            <text
+              x={
+                margin.left +
+                FORECAST_CHART.label
+                  .usageOffsetX
+              }
+              y={
+                yAt(
+                  selectedPoint.y
+                ) -
+                FORECAST_CHART.label
+                  .usageOffsetY
+              }
+              textAnchor="start"
+              fontSize={
+                FORECAST_CHART.label
+                  .fontSize
+              }
+              fontWeight={600}
+              fill={
+                FORECAST_CHART.colour
+                  .selectedCallStroke
+              }
+            >
+              {formatResourceQuantity(
+                selectedPoint.y
+              )}
+            </text>
+
+            <text
+              x={
+                xAt(
+                  selectedPoint.x
+                ) +
+                FORECAST_CHART.label
+                  .dateOffsetX
+              }
+              y={
+                height -
+                margin.bottom -
+                FORECAST_CHART.label
+                  .dateOffsetY
+              }
+              textAnchor="start"
+              fontSize={
+                FORECAST_CHART.label
+                  .fontSize
+              }
+              fontWeight={600}
+              fill={
+                FORECAST_CHART.colour
+                  .selectedCallStroke
+              }
+            >
+              {formatFullDateTime(
+                selectedPoint.x
+              )}
+            </text>
+
+            {selectedPoint.call.workOrderId != null ? (
+              <a
+                href={`${SAP_ORDER_URL}${selectedPoint.call.workOrderId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <text
+                  x={
+                    xAt(
+                      selectedPoint.x
+                    ) +
+                    FORECAST_CHART.label
+                      .selectedDescriptionOffsetX
+                  }
+                  y={
+                    yAt(
+                      selectedPoint.y
+                    ) -
+                    4
+                  }
+                  textAnchor="start"
+                  fontSize={
+                    FORECAST_CHART.label
+                      .descriptionFontSize
+                  }
+                  fontWeight={600}
+                  fill={
+                    FORECAST_CHART.colour
+                      .selectedCallStroke
+                  }
+                  textDecoration="underline"
+                  className="cursor-pointer"
+                >
+                  {`MO ${selectedPoint.call.workOrderId}`}
+                </text>
+              </a>
+            ) : (
+              <text
+                x={
+                  xAt(
+                    selectedPoint.x
+                  ) +
+                  FORECAST_CHART.label
+                    .selectedDescriptionOffsetX
+                }
+                y={
+                  yAt(
+                    selectedPoint.y
+                  ) -
+                  4
+                }
+                textAnchor="start"
+                fontSize={
+                  FORECAST_CHART.label
+                    .descriptionFontSize
+                }
+                fontWeight={600}
+                fill={
+                  FORECAST_CHART.colour
+                    .selectedCallStroke
+                }
+              >
+                Forecast only
+              </text>
+            )}
+
+            <text
+              x={
+                xAt(
+                  selectedPoint.x
+                ) +
+                FORECAST_CHART.label
+                  .selectedDescriptionOffsetX
+              }
+              y={
+                yAt(
+                  selectedPoint.y
+                ) +
+                9
+              }
+              textAnchor="start"
+              fontSize={
+                FORECAST_CHART.label
+                  .descriptionFontSize
+              }
+              fill={
+                FORECAST_CHART.colour
+                  .selectedCallStroke
+              }
+            >
+              {selectedPoint.call
+                .orderDescription ??
+                selectedPoint.call
+                  .description}
+            </text>
+          </>
+        )}
+
+        {baselinePoint && (
+          <>
+            <text
+              x={
+                margin.left +
+                FORECAST_CHART.label
+                  .usageOffsetX
+              }
+              y={
+                yAt(
+                  baselinePoint.y
+                ) +
+                14
+              }
+              textAnchor="start"
+              fontSize={
+                FORECAST_CHART.label
+                  .fontSize
+              }
+              fontWeight={600}
+              fill={
+                FORECAST_CHART.colour
+                  .baselineCallStroke
+              }
+            >
+              {formatResourceQuantity(
+                baselinePoint.y
+              )}
+            </text>
+
+            <text
+              x={
+                xAt(
+                  baselinePoint.x
+                ) -
+                FORECAST_CHART.label
+                  .dateOffsetX
+              }
+              y={
+                height -
+                margin.bottom -
+                FORECAST_CHART.label
+                  .dateOffsetY
+              }
+              textAnchor="end"
+              fontSize={
+                FORECAST_CHART.label
+                  .fontSize
+              }
+              fontWeight={600}
+              fill={
+                FORECAST_CHART.colour
+                  .baselineCallStroke
+              }
+            >
+              {formatForecastChartDate(
+                baselinePoint.x,
+                true
+              )}
+            </text>
+            {baselinePoint.call.workOrderId != null ? (
+              <a
+                href={`${SAP_ORDER_URL}${baselinePoint.call.workOrderId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <text
+                  x={
+                    xAt(
+                      baselinePoint.x
+                    ) -
+                    FORECAST_CHART.label
+                      .baselineDescriptionOffsetX
+                  }
+                  y={
+                    yAt(
+                      baselinePoint.y
+                    ) -
+                    4
+                  }
+                  textAnchor="end"
+                  fontSize={
+                    FORECAST_CHART.label
+                      .descriptionFontSize
+                  }
+                  fontWeight={600}
+                  fill={
+                    FORECAST_CHART.colour
+                      .baselineCallStroke
+                  }
+                  textDecoration="underline"
+                  className="cursor-pointer"
+                >
+                  {`MO ${baselinePoint.call.workOrderId}`}
+                </text>
+              </a>
+            ) : (
+              <text
+                x={
+                  xAt(
+                    baselinePoint.x
+                  ) -
+                  FORECAST_CHART.label
+                    .baselineDescriptionOffsetX
+                }
+                y={
+                  yAt(
+                    baselinePoint.y
+                  ) -
+                  4
+                }
+                textAnchor="end"
+                fontSize={
+                  FORECAST_CHART.label
+                    .descriptionFontSize
+                }
+                fontWeight={600}
+                fill={
+                  FORECAST_CHART.colour
+                    .baselineCallStroke
+                }
+              >
+                Completed call
+              </text>
+            )}
+
+            <text
+              x={
+                xAt(
+                  baselinePoint.x
+                ) -
+                FORECAST_CHART.label
+                  .baselineDescriptionOffsetX
+              }
+              y={
+                yAt(
+                  baselinePoint.y
+                ) +
+                9
+              }
+              textAnchor="end"
+              fontSize={
+                FORECAST_CHART.label
+                  .descriptionFontSize
+              }
+              fill={
+                FORECAST_CHART.colour
+                  .baselineCallStroke
+              }
+            >
+              {baselinePoint.call
+                .orderDescription ??
+                baselinePoint.call
+                  .description}
+            </text>
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+function CollapsibleForecastSection({
+  title,
+  defaultOpen = true,
+  children,
+}) {
+  const [
+    open,
+    setOpen,
+  ] = React.useState(
+    defaultOpen
+  );
+
+  return (
+    <section className="mt-4 border border-slate-200">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1 border-b border-slate-200 px-3 py-2 text-left text-xs font-semibold"
+        onClick={() =>
+          setOpen(
+            (current) =>
+              !current
+          )
+        }
+      >
+        <ExpandIcon
+          expanded={
+            open
+          }
+        />
+
+        {title}
+      </button>
+
+      {open && children}
+    </section>
+  );
+}
+
+function ForecastDerivationContent({
+  derivation,
+  item,
+}) {
+  const defaultConfig =
+    React.useMemo(
+      () =>
+        getForecastChartDefaults(
+          derivation
+        ),
+      [derivation]
+    );
+
+  const [
+    chartConfig,
+    setChartConfig,
+  ] = React.useState(
+    defaultConfig
+  );
+
+  React.useEffect(() => {
+    setChartConfig(
+      defaultConfig
+    );
+  }, [
+    defaultConfig,
+  ]);
+
+  const selectedCall =
+    derivation.calls.find(
+      (call) =>
+        call.mpCall ===
+        derivation.selectedCall
+    ) ?? null;
+
+  const baselineCall =
+    derivation.calls
+      .filter(
+        (call) =>
+          call.isCompleted &&
+          call.completedMs != null &&
+          call.completionHours != null &&
+          call.mpCall <
+          derivation.selectedCall
+      )
+      .sort(
+        (a, b) =>
+          b.mpCall -
+          a.mpCall
+      )[0] ?? null;
+
+  return (
+    <div className="min-h-0 overflow-auto p-4">
+      <section className="mb-4 border border-slate-200 p-3">
+        <div className="mb-2 text-xs font-semibold">
+          Usage Forecast
+        </div>
+
+        <ForecastDerivationChartControls
+          config={
+            chartConfig
+          }
+          setConfig={
+            setChartConfig
+          }
+          reset={() =>
+            setChartConfig(
+              defaultConfig
+            )
+          }
+        />
+
+        {chartConfig.endMs <=
+          chartConfig.startMs ? (
+          <div className="flex h-80 items-center justify-center text-xs text-red-700">
+            Chart end must be after chart start.
+          </div>
+        ) : (
+          <ForecastDerivationChart
+            derivation={
+              derivation
+            }
+            config={
+              chartConfig
+            }
+            baselineCall={
+              baselineCall
+            }
+          />
+        )}
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="border border-slate-200 p-3">
+          <h3 className="mb-2 text-xs font-semibold">
+            Selected Forecast
+          </h3>
+
+          <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-slate-500">
+              Description
+            </dt>
+            <dd>
+              {selectedCall?.description ??
+                item.description}
+            </dd>
+
+            <dt className="text-slate-500">
+              Strategy
+            </dt>
+            <dd>
+              {derivation.strategy ??
+                '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Forecast date
+            </dt>
+            <dd>
+              {selectedCall?.forecastMs != null
+                ? formatFullDateTime(
+                  selectedCall.forecastMs
+                )
+                : '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Forecast usage
+            </dt>
+            <dd>
+              {selectedCall?.forecastHours != null
+                ? `${formatResourceQuantity(
+                  selectedCall.forecastHours
+                )} hrs`
+                : '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Baseline call
+            </dt>
+            <dd>
+              {baselineCall
+                ? `${baselineCall.mpCall} · ${formatFullDateTime(
+                  baselineCall.completedMs
+                )} @${formatResourceQuantity(
+                  baselineCall.completionHours
+                )} hrs`
+                : '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Source
+            </dt>
+            <dd>
+              {selectedCall?.forecastSource ??
+                '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Warning
+            </dt>
+            <dd>
+              {selectedCall?.warningDetail ??
+                selectedCall?.warning ??
+                'None'}
+            </dd>
+          </dl>
+        </section>
+
+        <section className="border border-slate-200 p-3">
+          <h3 className="mb-2 text-xs font-semibold">
+            Predictor
+          </h3>
+
+          <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-slate-500">
+              Counter
+            </dt>
+            <dd>
+              {derivation.counter ??
+                '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Readings
+            </dt>
+            <dd>
+              {derivation.predictorSnapshot
+                ?.points.length ?? 0}
+            </dd>
+
+            <dt className="text-slate-500">
+              Direction
+            </dt>
+            <dd>
+              {derivation.predictorSnapshot
+                ?.direction ?? '—'}
+            </dd>
+
+            <dt className="text-slate-500">
+              Predictor error
+            </dt>
+            <dd>
+              {derivation.predictorError ??
+                'None'}
+            </dd>
+          </dl>
+        </section>
+      </div>
+
+      <CollapsibleForecastSection
+        title="Maintenance Plan Calls"
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-2 py-1">
+                  Call
+                </th>
+                <th className="px-2 py-1">
+                  Work Order
+                </th>
+                <th className="px-2 py-1">
+                  Description
+                </th>
+                <th className="px-2 py-1">
+                  Status
+                </th>
+                <th className="px-2 py-1">
+                  Completed
+                </th>
+                <th className="px-2 py-1">
+                  Completion Usage
+                </th>
+                <th className="px-2 py-1">
+                  Forecast
+                </th>
+                <th className="px-2 py-1">
+                  Forecast Usage
+                </th>
+                <th className="px-2 py-1">
+                  Source
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {derivation.calls.map(
+                (call) => {
+                  const selected =
+                    call.mpCall ===
+                    derivation.selectedCall;
+
+                  const baseline =
+                    call.id ===
+                    baselineCall?.id;
+
+                  return (
+                    <tr
+                      key={call.id}
+                      className={
+                        selected
+                          ? 'bg-emerald-50 font-medium'
+                          : baseline
+                            ? 'bg-orange-50 font-medium'
+                            : 'border-t border-slate-100'
+                      }
+                    >
+                      <td className="px-2 py-1">
+                        {call.mpCall}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.workOrderId != null ? (
+                          <a
+                            href={`${SAP_ORDER_URL}${call.workOrderId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sky-700 hover:underline"
+                          >
+                            {call.workOrderId}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.orderDescription ??
+                          call.description}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {selected
+                          ? 'Selected'
+                          : baseline
+                            ? 'Baseline'
+                            : call.isCompleted
+                              ? 'Completed'
+                              : 'Future'}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.completedMs != null
+                          ? formatFullDateTime(
+                            call.completedMs
+                          )
+                          : '—'}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.completionHours != null
+                          ? formatResourceQuantity(
+                            call.completionHours
+                          )
+                          : '—'}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.forecastMs != null
+                          ? formatFullDateTime(
+                            call.forecastMs
+                          )
+                          : '—'}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.forecastHours != null
+                          ? formatResourceQuantity(
+                            call.forecastHours
+                          )
+                          : '—'}
+                      </td>
+
+                      <td className="px-2 py-1">
+                        {call.forecastSource ??
+                          '—'}
+                      </td>
+                    </tr>
+                  );
+                }
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleForecastSection>
+
+      <CollapsibleForecastSection
+        title={`Counter Readings (${derivation.readings.length})`}
+        defaultOpen={false}
+      >
+        <div className="max-h-80 overflow-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="sticky top-0 bg-slate-50">
+              <tr>
+                <th className="px-2 py-1">
+                  Date
+                </th>
+
+                <th className="px-2 py-1 text-right">
+                  Usage
+                </th>
+
+                <th className="px-2 py-1 text-right">
+                  Reading
+                </th>
+
+                <th className="px-2 py-1 text-right">
+                  Usage Change
+                </th>
+
+                <th className="px-2 py-1 text-right">
+                  Reading Change
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {derivation.readings.map(
+                (
+                  reading,
+                  index
+                ) => {
+                  const previous =
+                    index === 0
+                      ? null
+                      : derivation.readings[
+                      index - 1
+                      ];
+
+                  const usageChange =
+                    previous == null
+                      ? null
+                      : reading.usage -
+                      previous.usage;
+
+                  const readingChange =
+                    previous == null
+                      ? null
+                      : reading.reading -
+                      previous.reading;
+
+                  return (
+                    <tr
+                      key={`${reading.whenMs}-${index}`}
+                      className="border-t border-slate-100"
+                    >
+                      <td className="whitespace-nowrap px-2 py-1">
+                        {formatFullDateTime(
+                          reading.whenMs
+                        )}
+                      </td>
+
+                      <td className="px-2 py-1 text-right">
+                        {formatResourceQuantity(
+                          reading.usage
+                        )}
+                      </td>
+
+                      <td className="px-2 py-1 text-right">
+                        {formatResourceQuantity(
+                          reading.reading
+                        )}
+                      </td>
+
+                      <td className="px-2 py-1 text-right">
+                        {usageChange == null
+                          ? '—'
+                          : formatSignedQuantity(
+                            usageChange
+                          )}
+                      </td>
+
+                      <td
+                        className={
+                          readingChange != null &&
+                            readingChange < 0
+                            ? 'px-2 py-1 text-right text-amber-700'
+                            : 'px-2 py-1 text-right'
+                        }
+                        title={
+                          readingChange != null &&
+                            readingChange < 0
+                            ? 'Physical meter reading decreased. This may indicate a meter reset.'
+                            : undefined
+                        }
+                      >
+                        {readingChange == null
+                          ? '—'
+                          : formatSignedQuantity(
+                            readingChange
+                          )}
+                      </td>
+                    </tr>
+                  );
+                }
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleForecastSection>
+    </div>
+  );
+}
+
 function ForecastDerivationModal({
   item,
   close,
@@ -6445,13 +8582,6 @@ function ForecastDerivationModal({
   if (!derivation) {
     return null;
   }
-
-  const selectedCall =
-    derivation.calls.find(
-      (call) =>
-        call.mpCall ===
-        derivation.selectedCall
-    ) ?? null;
 
   return (
     <div
@@ -6505,223 +8635,14 @@ function ForecastDerivationModal({
         </header>
 
         <div className="min-h-0 overflow-auto p-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <section className="border border-slate-200 p-3">
-              <h3 className="mb-2 text-xs font-semibold">
-                Selected Forecast
-              </h3>
-
-              <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-slate-500">
-                  Description
-                </dt>
-                <dd>
-                  {selectedCall?.description ??
-                    item.description}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Strategy
-                </dt>
-                <dd>
-                  {derivation.strategy ??
-                    '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Forecast date
-                </dt>
-                <dd>
-                  {selectedCall?.forecastMs != null
-                    ? formatFullDateTime(
-                        selectedCall.forecastMs
-                      )
-                    : '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Forecast usage
-                </dt>
-                <dd>
-                  {selectedCall?.forecastHours != null
-                    ? `${formatResourceQuantity(
-                        selectedCall.forecastHours
-                      )} hrs`
-                    : '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Source
-                </dt>
-                <dd>
-                  {selectedCall?.forecastSource ??
-                    '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Warning
-                </dt>
-                <dd>
-                  {selectedCall?.warningDetail ??
-                    selectedCall?.warning ??
-                    'None'}
-                </dd>
-              </dl>
-            </section>
-
-            <section className="border border-slate-200 p-3">
-              <h3 className="mb-2 text-xs font-semibold">
-                Predictor
-              </h3>
-
-              <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-slate-500">
-                  Counter
-                </dt>
-                <dd>
-                  {derivation.counter ??
-                    '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Readings
-                </dt>
-                <dd>
-                  {derivation.predictorSnapshot
-                    ?.points.length ?? 0}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Direction
-                </dt>
-                <dd>
-                  {derivation.predictorSnapshot
-                    ?.direction ?? '—'}
-                </dd>
-
-                <dt className="text-slate-500">
-                  Predictor error
-                </dt>
-                <dd>
-                  {derivation.predictorError ??
-                    'None'}
-                </dd>
-              </dl>
-            </section>
-          </div>
-
-          <section className="mt-4 border border-slate-200">
-            <div className="border-b border-slate-200 px-3 py-2 text-xs font-semibold">
-              Maintenance Plan Calls
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-2 py-1">
-                      Call
-                    </th>
-                    <th className="px-2 py-1">
-                      Description
-                    </th>
-                    <th className="px-2 py-1">
-                      Status
-                    </th>
-                    <th className="px-2 py-1">
-                      Completed
-                    </th>
-                    <th className="px-2 py-1">
-                      Completion Usage
-                    </th>
-                    <th className="px-2 py-1">
-                      Forecast
-                    </th>
-                    <th className="px-2 py-1">
-                      Forecast Usage
-                    </th>
-                    <th className="px-2 py-1">
-                      Source
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {derivation.calls.map(
-                    (call) => {
-                      const selected =
-                        call.mpCall ===
-                        derivation.selectedCall;
-
-                      return (
-                        <tr
-                          key={call.id}
-                          className={
-                            selected
-                              ? 'bg-emerald-50 font-medium'
-                              : 'border-t border-slate-100'
-                          }
-                        >
-                          <td className="px-2 py-1">
-                            {call.mpCall}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.description}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {selected
-                              ? 'Selected'
-                              : call.isCompleted
-                                ? 'Completed'
-                                : 'Future'}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.completedMs != null
-                              ? formatFullDateTime(
-                                  call.completedMs
-                                )
-                              : '—'}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.completionHours != null
-                              ? formatResourceQuantity(
-                                  call.completionHours
-                                )
-                              : '—'}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.forecastMs != null
-                              ? formatFullDateTime(
-                                  call.forecastMs
-                                )
-                              : '—'}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.forecastHours != null
-                              ? formatResourceQuantity(
-                                  call.forecastHours
-                                )
-                              : '—'}
-                          </td>
-
-                          <td className="px-2 py-1">
-                            {call.forecastSource ??
-                              '—'}
-                          </td>
-                        </tr>
-                      );
-                    }
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <ForecastDerivationContent
+            derivation={
+              derivation
+            }
+            item={
+              item
+            }
+          />
         </div>
       </div>
     </div>

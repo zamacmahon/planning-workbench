@@ -24,7 +24,12 @@ interface ForecastResult {
 export interface ForecastDerivationCall {
   id: string;
   mpCall: number;
+
+  workOrderId: number | null;
+
   description: string;
+
+  orderDescription: string | null;
 
   plannedMs: number | null;
   completedMs: number | null;
@@ -35,14 +40,11 @@ export interface ForecastDerivationCall {
   forecastMs: number | null;
   forecastHours: number | null;
 
-  forecastSource:
-  ForecastSource | null;
+  forecastSource: ForecastSource | null;
 
-  warning:
-  ForecastWarning | null;
+  warning: ForecastWarning | null;
 
-  warningDetail:
-  string | null;
+  warningDetail: string | null;
 }
 
 export interface ForecastDerivation {
@@ -51,20 +53,22 @@ export interface ForecastDerivation {
 
   asset: string;
   counter: number | null;
-  counterDescription:
-  string | null;
+  counterDescription: string | null;
   strategy: string | null;
 
-  calls:
-  ForecastDerivationCall[];
+  readings: Array<{
+    whenMs: number;
+    usage: number;
+    reading: number;
+  }>;
 
-  predictorSnapshot:
-  ReturnType<
+  calls: ForecastDerivationCall[];
+
+  predictorSnapshot: ReturnType<
     Predictor['getSnapshot']
   > | null;
 
-  predictorError:
-  string | null;
+  predictorError: string | null;
 }
 
 const predictorByCounter =
@@ -115,12 +119,11 @@ function plannedForecast(
   warningDetail = null
 ): ForecastResult {
   return {
-    forecastMs:
-      source.planned == null
-        ? null
-        : Date.parse(
-          source.planned
-        ),
+    forecastMs: source.planned == null
+      ? null
+      : Date.parse(
+        source.planned
+      ),
     forecastHours: null,
     source: 'planned',
     warning,
@@ -401,8 +404,7 @@ for (
       forecastByPlanCall.set(
         getPlanCallKey(call),
         {
-          forecastMs:
-            prediction.x.getTime(),
+          forecastMs: prediction.x.getTime(),
           forecastHours,
           source: 'usage',
           warning: null,
@@ -529,50 +531,51 @@ export function deriveForecastExplanation(
 
         return {
           id: call.id,
+
           mpCall:
             call.mpCall,
+
+          workOrderId:
+            call.workOrderId ??
+            null,
+
           description:
             call.desc,
 
-          plannedMs:
-            call.planned == null
-              ? null
-              : Date.parse(
-                call.planned
-              ),
+          orderDescription:
+            call.orderDesc,
 
-          completedMs:
-            call.completed == null
-              ? null
-              : Date.parse(
-                call.completed
-              ),
-
-          isCompleted:
-            Boolean(
-              call.isCompleted
+          plannedMs: call.planned == null
+            ? null
+            : Date.parse(
+              call.planned
             ),
+
+          completedMs: call.completed == null
+            ? null
+            : Date.parse(
+              call.completed
+            ),
+
+          isCompleted: Boolean(
+            call.isCompleted
+          ),
 
           completionHours,
 
-          forecastMs:
-            forecast?.forecastMs ??
+          forecastMs: forecast?.forecastMs ??
             null,
 
-          forecastHours:
-            forecast?.forecastHours ??
+          forecastHours: forecast?.forecastHours ??
             null,
 
-          forecastSource:
-            forecast?.source ??
+          forecastSource: forecast?.source ??
             null,
 
-          warning:
-            forecast?.warning ??
+          warning: forecast?.warning ??
             null,
 
-          warningDetail:
-            forecast?.warningDetail ??
+          warningDetail: forecast?.warningDetail ??
             null,
         };
       }
@@ -582,29 +585,53 @@ export function deriveForecastExplanation(
     maintenancePlanId,
     selectedCall,
 
-    asset:
-      item.asset,
+    asset: item.asset,
 
     counter,
 
-    counterDescription:
-      counter == null
-        ? null
-        : counters.find(
-          (definition) =>
-            definition.counter ===
-            counter
-        )?.longDesc ?? null,
+    counterDescription: counter == null
+      ? null
+      : counters.find(
+        (definition) =>
+          definition.counter ===
+          counter
+      )?.longDesc ?? null,
 
     strategy,
+
+    readings:
+      counter == null
+        ? []
+        : readings
+          .filter(
+            (reading) =>
+              reading.counter ===
+              counter
+          )
+          .map(
+            (reading) => ({
+              whenMs:
+                Date.parse(
+                  reading.when
+                ),
+              usage:
+                reading.usage,
+              reading:
+                reading.reading,
+            })
+          )
+          .sort(
+            (a, b) =>
+              a.whenMs -
+              b.whenMs
+          ),
 
     calls:
       derivationCalls,
 
-    predictorSnapshot:
-      predictor
-        ? predictor.getSnapshot()
-        : null,
+    predictorSnapshot: predictor
+      ? predictor.getSnapshot()
+      : null,
 
     predictorError,
   };
@@ -707,122 +734,93 @@ function normaliseWorkItem(
     );
 
   return {
-    id:
-      source.id,
+    id: source.id,
 
-    description:
-      source.desc,
+    description: source.desc,
 
-    asset:
-      source.asset,
+    asset: source.asset,
 
-    priority:
-      source.prio,
+    priority: source.prio,
 
-    availability:
-      source.operationId === '0010'
-        ? Math.floor(Math.random() * 3) + 1
-        : null,
+    availability: source.operationId === '0010'
+      ? Math.floor(Math.random() * 3) + 1
+      : null,
 
-    startMs:
-      source.operationId == null ||
-        source.start == null
-        ? null
-        : Date.parse(
-          source.start
-        ),
+    startMs: source.operationId == null ||
+      source.start == null
+      ? null
+      : Date.parse(
+        source.start
+      ),
 
-    durationMinutes:
-      source.operationId == null ||
-        source.duration == null
-        ? null
-        : source.duration * 60,
+    durationMinutes: source.operationId == null ||
+      source.duration == null
+      ? null
+      : source.duration * 60,
 
-    forecastMs:
-      ownsForecast
-        ? forecast.forecastMs
-        : null,
+    forecastMs: ownsForecast
+      ? forecast.forecastMs
+      : null,
 
-    forecastHours:
-      forecast.forecastHours,
+    forecastHours: forecast.forecastHours,
 
-    forecastSource:
-      forecast.source,
+    forecastSource: forecast.source,
 
-    forecastWarning:
-      forecast.warning,
+    forecastWarning: forecast.warning,
 
-    forecastWarningDetail:
-      forecast.warningDetail,
+    forecastWarningDetail: forecast.warningDetail,
 
-    isStoppageReason:
-      source.mp != null &&
+    isStoppageReason: source.mp != null &&
       source.mi != null &&
       source.mat === "Y07",
 
-    workOrderId:
-      source.operationId == null ||
-        source.workOrderId == null
-        ? null
-        : String(
-          source.workOrderId
-        ),
+    workOrderId: source.operationId == null ||
+      source.workOrderId == null
+      ? null
+      : String(
+        source.workOrderId
+      ),
 
-    operationId:
-      source.operationId == null
-        ? null
-        : String(
-          source.operationId
-        ),
+    operationId: source.operationId == null
+      ? null
+      : String(
+        source.operationId
+      ),
 
-    resourceRequirements:
-      source.operationId != null &&
-        source.resourceCode != null &&
-        source.quantity != null
-        ? [
-          {
-            resourceCode:
-              source.resourceCode,
-            quantity:
-              source.quantity,
-          },
-        ]
-        : [],
+    resourceRequirements: source.operationId != null &&
+      source.resourceCode != null &&
+      source.quantity != null
+      ? [
+        {
+          resourceCode: source.resourceCode,
+          quantity: source.quantity,
+        },
+      ]
+      : [],
 
-    orderDescription:
-      source.orderDesc,
+    orderDescription: source.orderDesc,
 
-    subphase:
-      source.subphase,
+    subphase: source.subphase,
 
-    notes:
-      source.notes,
+    notes: source.notes,
 
-    materialStatus:
-      source.mat,
+    materialStatus: source.mat,
 
-    materialStatusName:
-      source.matName,
+    materialStatusName: source.matName,
 
-    maintenancePlanId:
-      source.mp,
+    maintenancePlanId: source.mp,
 
-    maintenanceItemId:
-      source.mi,
+    maintenanceItemId: source.mi,
 
-    maintenancePlanCall:
-      source.mpCall,
+    maintenancePlanCall: source.mpCall,
 
-    strategy:
-      source.strat,
+    strategy: source.strat,
 
     plannedMs,
 
-    counter:
-      source.counter,
+    counter: source.counter,
 
-    importedStoppage:
-      source.stoppage,
+    importedStoppage: source.stoppage,
   };
 }
 
@@ -854,8 +852,7 @@ export function calculateForecastStartAdvice(
       expectedStartHours: null,
       forecastDeviationHours: null,
       forecastDeviationMs,
-      forecastAdviceWarning:
-        'No counter is available for this performance-based forecast.',
+      forecastAdviceWarning: 'No counter is available for this performance-based forecast.',
     };
   }
 
@@ -869,10 +866,9 @@ export function calculateForecastStartAdvice(
       expectedStartHours: null,
       forecastDeviationHours: null,
       forecastDeviationMs,
-      forecastAdviceWarning:
-        predictorErrorByCounter.get(
-          item.counter
-        ) ??
+      forecastAdviceWarning: predictorErrorByCounter.get(
+        item.counter
+      ) ??
         `Counter ${item.counter} has no usable predictor.`,
     };
   }
@@ -900,10 +896,9 @@ export function calculateForecastStartAdvice(
       expectedStartHours: null,
       forecastDeviationHours: null,
       forecastDeviationMs,
-      forecastAdviceWarning:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      forecastAdviceWarning: error instanceof Error
+        ? error.message
+        : String(error),
     };
   }
 }
