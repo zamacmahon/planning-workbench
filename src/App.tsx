@@ -5,16 +5,29 @@ import {
   SAP_MP_URL,
   makeWomaUrl,
 } from './data/misc';
+
 import {
   calculateForecastStartAdvice,
   deriveForecastExplanation,
   workItems,
 } from './data/workItems';
+
 import { resourceDefinitions } from './data/resources';
+
 import { assets } from './data/assets';
+
 import {
   stoppages as importedStoppages,
 } from './data/stoppages';
+
+import {
+  schedules as importedSchedules,
+} from './data/schedules';
+
+import {
+  sites,
+} from './data/sites';
+
 import { resourceCapacity } from './data/resourceCapacity';
 
 import {
@@ -827,6 +840,92 @@ function getGroupedWorkItems(
   );
 }
 
+function normaliseImportedSchedules() {
+  return Object.fromEntries(
+    importedSchedules.map(
+      (schedule) => [
+        schedule.schedule,
+        {
+          id:
+            schedule.schedule,
+
+          locations:
+            schedule.locations ?? [],
+
+          title:
+            schedule.title,
+
+          startMs:
+            Date.parse(
+              schedule.start
+            ),
+
+          endMs:
+            Date.parse(
+              schedule.end
+            ),
+
+          status:
+            'Draft',
+
+          imported: true,
+        },
+      ]
+    )
+  );
+}
+
+function scheduleMatchesLocations(
+  schedule,
+  selectedLocations
+) {
+  return (
+    schedule.locations.length === 0 ||
+    schedule.locations.some(
+      (location) =>
+        selectedLocations.has(
+          location
+        )
+    )
+  );
+}
+
+function scheduleAcceptsLocation(
+  schedule,
+  location
+) {
+  return (
+    schedule.locations.length === 0 ||
+    schedule.locations.includes(
+      location
+    )
+  );
+}
+
+function getSiteForItem(
+  item
+) {
+  return (
+    sites.find(
+      (site) =>
+        site.plant ===
+        item.plant &&
+        site.pg ===
+        item.pg
+    ) ?? null
+  );
+}
+
+function getItemLocation(
+  item
+) {
+  return (
+    getSiteForItem(
+      item
+    )?.loc ?? null
+  );
+}
+
 function buildImportedPlanningState(
   items
 ) {
@@ -864,6 +963,9 @@ function buildImportedPlanningState(
         imported.schedule ??
         null,
 
+      location:
+        imported.loc,
+
       imported: true,
     };
   }
@@ -898,6 +1000,11 @@ function buildImportedPlanningState(
           item.importedStoppage,
 
         scheduleId: null,
+
+        location:
+          getItemLocation(
+            item
+          ),
 
         imported: true,
       };
@@ -1100,8 +1207,12 @@ function ordered(items, order) {
 function getDefaultExpanded(
   rowId
 ) {
-  return rowId.endsWith(
-    '-stoppage-reasons'
+  return (
+    rowId.endsWith(
+      '-stoppage-reasons'
+    ) ||
+    rowId ===
+    'unallocated-stoppages'
   );
 }
 
@@ -1115,6 +1226,285 @@ function getExpanded(
       rowId
     )
   );
+}
+
+function appendStoppageRows({
+  rows,
+  parentLevel,
+  stoppage,
+  items,
+  expanded,
+  orders,
+  rangeStartMs,
+  rangeEndMs,
+}) {
+  const assetItems =
+    items.filter(
+      (item) =>
+        item.asset ===
+        stoppage.asset
+    );
+
+  const unallocatedAssetItems =
+    assetItems.filter(
+      (item) =>
+        item.allocatedStoppageId ==
+        null
+    );
+
+  const allocatedOrderKey =
+    `allocated:${stoppage.id}`;
+
+  const unallocatedOrderKey =
+    `unallocated:${stoppage.id}`;
+
+  const allocated = ordered(
+    assetItems.filter(
+      (item) =>
+        item.allocatedStoppageId ===
+        stoppage.id
+    ),
+    orders[
+    allocatedOrderKey
+    ] ?? []
+  );
+
+  const unallocated = ordered(
+    unallocatedAssetItems,
+    orders[
+    unallocatedOrderKey
+    ] ?? []
+  );
+
+  const timed =
+    allocated.filter(
+      (item) =>
+        item.startMs != null &&
+        item.durationMinutes != null
+    );
+
+  const startMs =
+    timed.length > 0
+      ? Math.min(
+        ...timed.map(
+          (item) =>
+            item.startMs
+        )
+      )
+      : null;
+
+  const finishMs =
+    timed.length > 0
+      ? Math.max(
+        ...timed.map(
+          (item) =>
+            item.startMs +
+            item.durationMinutes *
+            MINUTE
+        )
+      )
+      : null;
+
+  const resourceDemands =
+    calculatePeakResourceDemands(
+      allocated
+    );
+
+  const priorities =
+    allocated
+      .map(
+        (item) =>
+          item.priority
+      )
+      .filter(
+        (priority) =>
+          priority != null
+      );
+
+  const availabilities =
+    allocated
+      .map(
+        (item) =>
+          item.availability
+      )
+      .filter(
+        (availability) =>
+          availability != null
+      );
+
+  const forecastMarkers =
+    allocated
+      .filter(
+        (item) =>
+          item.isStoppageReason &&
+          item.forecastMs != null &&
+          item.forecastMs >=
+          rangeStartMs &&
+          item.forecastMs <=
+          rangeEndMs
+      )
+      .map(
+        (item) => ({
+          id: item.id,
+          forecastMs:
+            item.forecastMs,
+          forecastHours:
+            item.forecastHours,
+          forecastSource:
+            item.forecastSource,
+          forecastWarning:
+            item.forecastWarning,
+          forecastWarningDetail:
+            item.forecastWarningDetail,
+          expectedStartHours:
+            item.expectedStartHours,
+          forecastDeviationHours:
+            item.forecastDeviationHours,
+          forecastDeviationMs:
+            item.forecastDeviationMs,
+          forecastAdviceWarning:
+            item.forecastAdviceWarning,
+          workOrderId:
+            item.workOrderId,
+          description:
+            item.description,
+          isStoppageReason:
+            true,
+          allocatedStoppageId:
+            item.allocatedStoppageId,
+        })
+      )
+      .sort(
+        (a, b) =>
+          a.forecastMs -
+          b.forecastMs
+      );
+
+  const unallocatedId =
+    `${stoppage.id}-unallocated`;
+
+  rows.push({
+    id: stoppage.id,
+    rowKey:
+      stoppage.id,
+    type: 'stoppage',
+    level:
+      parentLevel,
+    hasChildren:
+      allocated.length > 0 ||
+      unallocated.length > 0,
+    description:
+      stoppage.description,
+    asset:
+      stoppage.asset,
+    location:
+      stoppage.location,
+    scheduleId:
+      stoppage.scheduleId ??
+      null,
+    priority:
+      priorities.length > 0
+        ? Math.min(
+          ...priorities
+        )
+        : null,
+    availability:
+      availabilities.length > 0
+        ? Math.max(
+          ...availabilities
+        )
+        : null,
+    startMs,
+    durationMinutes:
+      startMs == null ||
+        finishMs == null
+        ? null
+        : Math.round(
+          (
+            finishMs -
+            startMs
+          ) /
+          MINUTE
+        ),
+    resourceDemands,
+    forecastMarkers,
+    barClass:
+      'bg-cyan-800 text-white',
+  });
+
+  if (
+    !getExpanded(
+      expanded,
+      stoppage.id
+    )
+  ) {
+    return;
+  }
+
+  rows.push(
+    ...allocated.map(
+      (item) => ({
+        ...item,
+        rowKey:
+          `${stoppage.id}-allocated-${item.id}`,
+        type:
+          'allocated',
+        level:
+          parentLevel + 1,
+        stoppageId:
+          stoppage.id,
+        orderKey:
+          allocatedOrderKey,
+      })
+    )
+  );
+
+  rows.push({
+    id:
+      unallocatedId,
+    rowKey:
+      unallocatedId,
+    type:
+      'unallocatedHeader',
+    level:
+      parentLevel + 1,
+    hasChildren:
+      true,
+    description:
+      'Unallocated Work (Add to Stoppage)',
+    asset:
+      stoppage.asset,
+    priority:
+      null,
+    stoppageId:
+      stoppage.id,
+  });
+
+  if (
+    unallocated.length > 0 &&
+    getExpanded(
+      expanded,
+      unallocatedId
+    )
+  ) {
+    rows.push(
+      ...unallocated.map(
+        (item) => ({
+          ...item,
+          rowKey:
+            `${stoppage.id}-unallocated-${item.id}`,
+          type:
+            'unallocated',
+          level:
+            parentLevel + 2,
+          stoppageId:
+            stoppage.id,
+          orderKey:
+            unallocatedOrderKey,
+        })
+      )
+    );
+  }
 }
 
 function deriveAssetRows(
@@ -1293,202 +1683,19 @@ function deriveAssetRows(
       continue;
     }
 
-    for (const stoppage of assetStoppages) {
-      const allocatedOrderKey =
-        `allocated:${stoppage.id}`;
-
-      const unallocatedOrderKey =
-        `unallocated:${stoppage.id}`;
-
-      const allocated = ordered(
-        assetItems.filter(
-          (item) =>
-            item.allocatedStoppageId ===
-            stoppage.id
-        ),
-        orders[allocatedOrderKey] ?? []
-      );
-
-      const unallocated = ordered(
-        unallocatedAssetItems,
-        orders[unallocatedOrderKey] ?? []
-      );
-
-      const timed = allocated.filter(
-        (item) =>
-          item.startMs != null &&
-          item.durationMinutes != null
-      );
-
-      const startMs = timed.length
-        ? Math.min(
-          ...timed.map((item) => item.startMs)
-        )
-        : null;
-
-      const finishMs = timed.length
-        ? Math.max(
-          ...timed.map(
-            (item) =>
-              item.startMs +
-              item.durationMinutes * MINUTE
-          )
-        )
-        : null;
-
-      const resourceDemands =
-        calculatePeakResourceDemands(
-          allocated
-        );
-
-      const allocatedPriorities = allocated
-        .map((item) => item.priority)
-        .filter((priority) => priority != null);
-
-      const allocatedAvailabilities =
-        allocated
-          .map((item) => item.availability)
-          .filter(
-            (availability) =>
-              availability != null
-          );
-
-      const stoppageAvailability =
-        allocatedAvailabilities.length > 0
-          ? Math.max(
-            ...allocatedAvailabilities
-          )
-          : null;
-
-      const stoppageForecastMarkers =
-        allocated
-          .filter(
-            (item) =>
-              item.isStoppageReason &&
-              item.forecastMs != null &&
-              item.forecastMs >= rangeStartMs &&
-              item.forecastMs <= rangeEndMs
-          )
-          .map((item) => ({
-            id: item.id,
-            forecastMs: item.forecastMs,
-            forecastHours:
-              item.forecastHours,
-            forecastSource:
-              item.forecastSource,
-            forecastWarning:
-              item.forecastWarning,
-            forecastWarningDetail:
-              item.forecastWarningDetail,
-            expectedStartHours:
-              item.expectedStartHours,
-            forecastDeviationHours:
-              item.forecastDeviationHours,
-            forecastDeviationMs:
-              item.forecastDeviationMs,
-            forecastAdviceWarning:
-              item.forecastAdviceWarning,
-            workOrderId: item.workOrderId,
-            description: item.description,
-            isStoppageReason: true,
-            allocatedStoppageId:
-              item.allocatedStoppageId,
-          }))
-          .sort(
-            (a, b) =>
-              a.forecastMs - b.forecastMs
-          );
-
-      const unallocatedId =
-        `${stoppage.id}-unallocated`;
-
-      rows.push({
-        id: stoppage.id,
-        rowKey: stoppage.id,
-        type: 'stoppage',
-        level: 1,
-        hasChildren:
-          allocated.length > 0 ||
-          unallocated.length > 0,
-        description: stoppage.description,
-        asset: assetDefinition.id,
-        priority:
-          allocatedPriorities.length > 0
-            ? Math.min(
-              ...allocatedPriorities
-            )
-            : null,
-        availability:
-          stoppageAvailability,
-        startMs,
-        durationMinutes:
-          startMs == null ||
-            finishMs == null
-            ? null
-            : Math.round(
-              (finishMs - startMs) /
-              MINUTE
-            ),
-        resourceDemands,
-        forecastMarkers:
-          stoppageForecastMarkers,
-        barClass:
-          'bg-cyan-800 text-white',
+    for (
+      const stoppage of assetStoppages
+    ) {
+      appendStoppageRows({
+        rows,
+        parentLevel: 1,
+        stoppage,
+        items,
+        expanded,
+        orders,
+        rangeStartMs,
+        rangeEndMs,
       });
-
-      if (
-        !getExpanded(
-          expanded,
-          stoppage.id
-        )
-      ) {
-        continue;
-      }
-
-      rows.push(
-        ...allocated.map((item) => ({
-          ...item,
-          rowKey:
-            `${stoppage.id}-allocated-${item.id}`,
-          type: 'allocated',
-          level: 2,
-          stoppageId: stoppage.id,
-          orderKey: allocatedOrderKey,
-        }))
-      );
-
-      rows.push({
-        id: unallocatedId,
-        rowKey: unallocatedId,
-        type: 'unallocatedHeader',
-        level: 2,
-        hasChildren:
-          true,
-        description: 'Unallocated Work (Add to Stoppage)',
-        asset: assetDefinition.id,
-        priority: null,
-        stoppageId: stoppage.id,
-      });
-
-      if (
-        unallocated.length > 0 &&
-        getExpanded(
-          expanded,
-          unallocatedId
-        )
-      ) {
-        rows.push(
-          ...unallocated.map((item) => ({
-            ...item,
-            rowKey:
-              `${stoppage.id}-unallocated-${item.id}`,
-            type: 'unallocated',
-            level: 3,
-            stoppageId: stoppage.id,
-            orderKey: unallocatedOrderKey,
-          }))
-        );
-      }
     }
 
     rows.push({
@@ -1554,6 +1761,265 @@ function deriveAssetRows(
           })
         )
       );
+    }
+  }
+
+  return rows;
+}
+
+function deriveScheduleRows(
+  items,
+  stoppages,
+  schedules,
+  stoppageSchedule,
+  expanded,
+  orders,
+  selectedLocations,
+  rangeStartMs,
+  rangeEndMs
+) {
+  const rows = [];
+
+  const visibleSchedules =
+    Object.values(
+      schedules
+    )
+      .filter(
+        (schedule) =>
+          scheduleMatchesLocations(
+            schedule,
+            selectedLocations
+          )
+      )
+      .sort(
+        (a, b) =>
+          a.startMs -
+          b.startMs ||
+          a.title.localeCompare(
+            b.title
+          )
+      );
+
+  const effectiveStoppages =
+    Object.values(
+      stoppages
+    ).map(
+      (stoppage) => ({
+        ...stoppage,
+
+        scheduleId:
+          stoppageSchedule[
+          stoppage.id
+          ] ?? null,
+      })
+    );
+
+  for (
+    const schedule of
+    visibleSchedules
+  ) {
+    const scheduleRowId =
+      `schedule-${schedule.id}`;
+
+    const scheduleStoppages =
+      effectiveStoppages
+        .filter(
+          (stoppage) =>
+            stoppage.scheduleId ===
+            schedule.id
+        )
+        .sort(
+          (a, b) => {
+            const aItems =
+              items.filter(
+                (item) =>
+                  item.allocatedStoppageId ===
+                  a.id
+              );
+
+            const bItems =
+              items.filter(
+                (item) =>
+                  item.allocatedStoppageId ===
+                  b.id
+              );
+
+            const aStart =
+              Math.min(
+                ...aItems
+                  .map(
+                    (item) =>
+                      item.startMs
+                  )
+                  .filter(
+                    (value) =>
+                      value != null
+                  ),
+                Number.POSITIVE_INFINITY
+              );
+
+            const bStart =
+              Math.min(
+                ...bItems
+                  .map(
+                    (item) =>
+                      item.startMs
+                  )
+                  .filter(
+                    (value) =>
+                      value != null
+                  ),
+                Number.POSITIVE_INFINITY
+              );
+
+            return (
+              aStart -
+              bStart ||
+              a.asset.localeCompare(
+                b.asset
+              ) ||
+              a.description.localeCompare(
+                b.description
+              )
+            );
+          }
+        );
+
+    rows.push({
+      id:
+        scheduleRowId,
+
+      rowKey:
+        scheduleRowId,
+
+      type:
+        'schedule',
+
+      level: 0,
+
+      hasChildren:
+        scheduleStoppages.length >
+        0,
+
+      description:
+        schedule.title,
+
+      locations:
+        schedule.locations,
+
+      scheduleId:
+        schedule.id,
+
+      asset: null,
+
+      priority: null,
+
+      startMs:
+        schedule.startMs,
+
+      durationMinutes:
+        Math.round(
+          (
+            schedule.endMs -
+            schedule.startMs
+          ) /
+          MINUTE
+        ),
+    });
+
+    if (
+      !getExpanded(
+        expanded,
+        scheduleRowId
+      )
+    ) {
+      continue;
+    }
+
+    for (
+      const stoppage of
+      scheduleStoppages
+    ) {
+      appendStoppageRows({
+        rows,
+        parentLevel: 1,
+        stoppage,
+        items,
+        expanded,
+        orders,
+        rangeStartMs,
+        rangeEndMs,
+      });
+    }
+  }
+
+  const unallocatedStoppages =
+    effectiveStoppages
+      .filter(
+        (stoppage) =>
+          stoppage.scheduleId ==
+          null &&
+          selectedLocations.has(
+            stoppage.location
+          )
+      )
+      .sort(
+        (a, b) =>
+          a.asset.localeCompare(
+            b.asset
+          ) ||
+          a.description.localeCompare(
+            b.description
+          )
+      );
+
+  const unallocatedRowId =
+    'unallocated-stoppages';
+
+  rows.push({
+    id:
+      unallocatedRowId,
+
+    rowKey:
+      unallocatedRowId,
+
+    type:
+      'unallocatedStoppagesHeader',
+
+    level: 0,
+
+    hasChildren:
+      unallocatedStoppages.length >
+      0,
+
+    description:
+      'Unallocated Stoppages',
+
+    asset: null,
+
+    priority: null,
+  });
+
+  if (
+    getExpanded(
+      expanded,
+      unallocatedRowId
+    )
+  ) {
+    for (
+      const stoppage of
+      unallocatedStoppages
+    ) {
+      appendStoppageRows({
+        rows,
+        parentLevel: 1,
+        stoppage,
+        items,
+        expanded,
+        orders,
+        rangeStartMs,
+        rangeEndMs,
+      });
     }
   }
 
@@ -1832,7 +2298,13 @@ function Accordion({ title, children }) {
   );
 }
 
-function Config({ overlays, setOverlays }) {
+function Config({
+  overlays,
+  setOverlays,
+  selectedLocations,
+  toggleLocation,
+  activeSchedule,
+}) {
   const toggle = (key) =>
     setOverlays((current) => ({
       ...current,
@@ -1899,13 +2371,76 @@ function Config({ overlays, setOverlays }) {
       </Accordion>
 
       <Accordion title="Filters">
-        <div className="grid grid-cols-[42px_1fr] gap-y-2">
-          <span>Site</span>
-          <input className="border px-1" defaultValue="M776 Tropicana" />
-          <span>Fleet</span>
-          <input className="border px-1" defaultValue="TK_HL Truck Haul" />
-          <span>Asset</span>
-          <input className="border px-1" defaultValue="TD6310" />
+        <div className="grid gap-2">
+          <div className="text-[11px] font-semibold">
+            Sites
+          </div>
+
+          {sites.map(
+            (site) => (
+              <label
+                key={site.loc}
+                className="flex items-start gap-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    selectedLocations.has(
+                      site.loc
+                    )
+                  }
+                  onChange={() =>
+                    toggleLocation(
+                      site.loc
+                    )
+                  }
+                />
+
+                <span>
+                  <span className="font-semibold">
+                    {site.loc}
+                  </span>
+
+                  <span className="ml-1 text-slate-500">
+                    {site.locName}
+                  </span>
+                </span>
+              </label>
+            )
+          )}
+
+          <div className="mt-2 border-t border-slate-200 pt-2">
+            <div className="text-[11px] font-semibold">
+              Active schedule
+            </div>
+
+            <div
+              className={
+                activeSchedule
+                  ? 'mt-1 text-xs text-emerald-700'
+                  : 'mt-1 text-xs text-amber-700'
+              }
+            >
+              {activeSchedule ? (
+                <>
+                  <div>
+                    {activeSchedule.title}
+                  </div>
+
+                  <div className="text-[10px] text-slate-500">
+                    {activeSchedule.locations
+                      .length === 0
+                      ? 'All sites'
+                      : activeSchedule.locations.join(
+                        ', '
+                      )}
+                  </div>
+                </>
+              ) : (
+                'No active schedule'
+              )}
+            </div>
+          </div>
         </div>
       </Accordion>
     </aside>
@@ -2612,11 +3147,14 @@ function DescriptionCell({
     'topReason',
   ].includes(row.type);
 
-  const isGroupingHeader =
-    row.type === 'unallocatedHeader' ||
-    row.type === 'assetUnallocatedHeader' ||
-    row.type ===
-    'assetStoppageReasonsHeader';
+  const isGroupingHeader = [
+    'unallocatedHeader',
+    'assetUnallocatedHeader',
+    'assetStoppageReasonsHeader',
+    'unallocatedStoppagesHeader',
+  ].includes(
+    row.type
+  );
 
   return (
     <div
@@ -3165,6 +3703,7 @@ function getHeight(row) {
     'unallocatedHeader',
     'assetUnallocatedHeader',
     'assetStoppageReasonsHeader',
+    'unallocatedStoppagesHeader',
   ].includes(row.type)
     ? 'h-6'
     : 'h-8';
@@ -3485,6 +4024,7 @@ function GanttRow({
         )}
 
       {row.type !== 'asset' &&
+        row.type !== 'schedule' &&
         row.startMs != null &&
         durationMs != null && (
           <div
@@ -8897,6 +9437,13 @@ export default function PlanningGrid() {
     availability: true,
     descriptions: true,
   });
+  const [
+    schedules,
+    setSchedules,
+  ] = React.useState(
+    () =>
+      normaliseImportedSchedules()
+  );
   const importedPlanningState =
     React.useMemo(
       () =>
@@ -8905,6 +9452,31 @@ export default function PlanningGrid() {
         ),
       []
     );
+
+  const [
+    planningView,
+    setPlanningView,
+  ] = React.useState(
+    'assets'
+  );
+
+  const [
+    selectedLocations,
+    setSelectedLocations,
+  ] = React.useState(
+    () =>
+      new Set(
+        sites.map(
+          (site) =>
+            site.loc
+        )
+      )
+  );
+
+  const [
+    activeScheduleId,
+    setActiveScheduleId,
+  ] = React.useState(null);
 
   const [
     stoppages,
@@ -8930,7 +9502,7 @@ export default function PlanningGrid() {
           (stoppage) => [
             stoppage.id,
             stoppage.scheduleId ??
-              null,
+            null,
           ]
         )
       )
@@ -9017,17 +9589,81 @@ export default function PlanningGrid() {
     timelineRange,
     setTimelineRange,
   });
-  const items = applyState(
+
+  const toggleLocation = (
+    location
+  ) => {
+    setSelectedLocations(
+      (current) => {
+        const next =
+          new Set(current);
+
+        if (next.has(location)) {
+          next.delete(location);
+        } else {
+          next.add(location);
+        }
+
+        return next;
+      }
+    );
+  };
+
+  const allItems = applyState(
     allocation,
     schedule
   ).map((item) => ({
     ...item,
+
+    location:
+      getItemLocation(
+        item
+      ),
+
     ...calculateForecastStartAdvice(
       item
     ),
   }));
+
+  const items =
+    allItems.filter(
+      (item) =>
+        item.location != null &&
+        selectedLocations.has(
+          item.location
+        )
+    );
+
+  const visibleStoppages =
+    Object.fromEntries(
+      Object.entries(
+        stoppages
+      ).filter(
+        ([
+          stoppageId,
+          stoppage,
+        ]) => {
+          const location =
+            stoppage.location ??
+            allItems.find(
+              (item) =>
+                item.allocatedStoppageId ===
+                stoppageId
+            )?.location ??
+            null;
+
+          return (
+            location != null &&
+            selectedLocations.has(
+              location
+            )
+          );
+        }
+      )
+    );
+
   const itemById = Object.fromEntries(
-    items.map((item) => [
+    allItems.map((item) => [
       item.id,
       item,
     ])
@@ -9215,16 +9851,56 @@ export default function PlanningGrid() {
       )
       : [];
 
-  const assetRows = deriveAssetRows(
-    items,
-    stoppages,
-    expanded,
-    orders,
-    timelineGeometry.startMs,
-    timelineGeometry.endMs
-  );
+  const effectiveStoppages =
+    Object.fromEntries(
+      Object.entries(
+        visibleStoppages
+      ).map(
+        ([
+          stoppageId,
+          stoppage,
+        ]) => [
+            stoppageId,
+            {
+              ...stoppage,
 
-  const rows = assetRows;
+              scheduleId:
+                stoppageSchedule[
+                stoppageId
+                ] ?? null,
+            },
+          ]
+      )
+    );
+
+  const assetRows =
+    deriveAssetRows(
+      items,
+      effectiveStoppages,
+      expanded,
+      orders,
+      timelineGeometry.startMs,
+      timelineGeometry.endMs
+    );
+
+  const scheduleRows =
+    deriveScheduleRows(
+      items,
+      effectiveStoppages,
+      schedules,
+      stoppageSchedule,
+      expanded,
+      orders,
+      selectedLocations,
+      timelineGeometry.startMs,
+      timelineGeometry.endMs
+    );
+
+  const rows =
+    planningView ===
+      'schedules'
+      ? scheduleRows
+      : assetRows;
 
   const openForecastDerivation = (
     row
@@ -9785,6 +10461,13 @@ export default function PlanningGrid() {
     );
   };
 
+  const activeSchedule =
+    activeScheduleId == null
+      ? null
+      : schedules[
+      activeScheduleId
+      ] ?? null;
+
   return (
     <div className="flex h-screen flex-col bg-white text-slate-950">
       <ForecastDerivationModal
@@ -9805,13 +10488,41 @@ export default function PlanningGrid() {
         </p>
         <div className="mt-2 flex gap-2">
           <button
-            className={`border px-2 py-1 text-xs ${screen === 'planning'
+            className={`border px-2 py-1 text-xs ${screen === 'planning' &&
+              planningView === 'assets'
               ? 'bg-slate-900 text-white'
               : 'bg-white'
               }`}
-            onClick={() => setScreen('planning')}
+            onClick={() => {
+              setScreen(
+                'planning'
+              );
+
+              setPlanningView(
+                'assets'
+              );
+            }}
           >
-            Planning Grid
+            Planning Grid (Assets)
+          </button>
+
+          <button
+            className={`border px-2 py-1 text-xs ${screen === 'planning' &&
+              planningView === 'schedules'
+              ? 'bg-slate-900 text-white'
+              : 'bg-white'
+              }`}
+            onClick={() => {
+              setScreen(
+                'planning'
+              );
+
+              setPlanningView(
+                'schedules'
+              );
+            }}
+          >
+            Planning Grid (Schedules)
           </button>
 
           <button
@@ -9834,6 +10545,15 @@ export default function PlanningGrid() {
             <Config
               overlays={overlays}
               setOverlays={setOverlays}
+              selectedLocations={
+                selectedLocations
+              }
+              toggleLocation={
+                toggleLocation
+              }
+              activeSchedule={
+                activeSchedule
+              }
             />
 
             <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
