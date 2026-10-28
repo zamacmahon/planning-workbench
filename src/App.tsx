@@ -1,6 +1,9 @@
 import React from 'react';
 
-import { SAP_ORDER_URL } from './data/misc';
+import {
+  SAP_ORDER_URL,
+  SAP_MP_URL,
+} from './data/misc';
 import {
   calculateForecastStartAdvice,
   deriveForecastExplanation,
@@ -8198,6 +8201,21 @@ function ForecastDerivationContent({
             Selected Forecast
           </h3>
 
+          <dt className="text-slate-500">
+            Maintenance plan
+          </dt>
+
+          <dd>
+            <a
+              href={`${SAP_MP_URL}${derivation.maintenancePlanId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sky-700 underline underline-offset-2 hover:text-sky-900"
+            >
+              {derivation.maintenancePlanId}
+            </a>
+          </dd>
+
           <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
             <dt className="text-slate-500">
               Description
@@ -8605,9 +8623,18 @@ function ForecastDerivationModal({
             <div className="mt-1 text-xs text-slate-600">
               {derivation.asset}
               {' · '}
-              Plan {
-                derivation.maintenancePlanId
-              }
+              Plan{' '}
+              <a
+                href={`${SAP_MP_URL}${derivation.maintenancePlanId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-700 underline underline-offset-2 hover:text-sky-900"
+                onClick={(event) =>
+                  event.stopPropagation()
+                }
+              >
+                {derivation.maintenancePlanId}
+              </a>
               {' · '}
               Call {
                 derivation.selectedCall
