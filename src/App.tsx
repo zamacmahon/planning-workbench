@@ -72,6 +72,27 @@ const DEFAULT_COLUMNS = [
     render: AssetCell,
   },
   {
+    key: 'location',
+    label: 'Location',
+    shortLabel: 'Loc',
+    width: 70,
+    render: LocationCell,
+  },
+  {
+    key: 'stoppage',
+    label: 'Stoppage',
+    shortLabel: 'Stop',
+    width: 150,
+    render: StoppageCell,
+  },
+  {
+    key: 'schedule',
+    label: 'Schedule',
+    shortLabel: 'Sched',
+    width: 180,
+    render: ScheduleCell,
+  },
+  {
     key: 'priority',
     label: 'Priority',
     shortLabel: 'Pri',
@@ -1529,6 +1550,13 @@ function deriveAssetRows(
         stoppage.asset === assetDefinition.id
     );
 
+    if (
+      assetItems.length === 0 &&
+      assetStoppages.length === 0
+    ) {
+      continue;
+    }
+
     const assetStoppageSummaries = assetStoppages
       .map((stoppage) => {
         const allocated = assetItems.filter(
@@ -1667,6 +1695,18 @@ function deriveAssetRows(
         unallocatedAssetItems.length > 0,
       description: assetDefinition.description,
       asset: assetDefinition.id,
+
+      location:
+        assetItems.find(
+          (item) =>
+            item.location != null
+        )?.location ??
+        assetStoppages.find(
+          (stoppage) =>
+            stoppage.location != null
+        )?.location ??
+        null,
+
       priority: null,
       forecastMarkers: assetForecastMarkers,
       stoppageSummaries:
@@ -2303,13 +2343,35 @@ function Config({
   setOverlays,
   selectedLocations,
   toggleLocation,
-  activeSchedule,
+  schedules,
+  activeScheduleId,
+  setActiveScheduleId,
 }) {
   const toggle = (key) =>
     setOverlays((current) => ({
       ...current,
       [key]: !current[key],
     }));
+
+  const visibleSchedules =
+    Object.values(
+      schedules
+    )
+      .sort(
+        (a, b) =>
+          a.startMs -
+          b.startMs ||
+          a.title.localeCompare(
+            b.title
+          )
+      );
+
+  const activeSchedule =
+    activeScheduleId == null
+      ? null
+      : schedules[
+      activeScheduleId
+      ] ?? null;
 
   return (
     <aside className="h-full overflow-auto border-r border-slate-300 bg-white">
@@ -2410,35 +2472,60 @@ function Config({
           )}
 
           <div className="mt-2 border-t border-slate-200 pt-2">
-            <div className="text-[11px] font-semibold">
-              Active schedule
-            </div>
+            <label className="grid gap-1">
+              <span className="text-[11px] font-semibold">
+                Active schedule
+              </span>
+
+              <select
+                className="w-full border border-slate-300 bg-white px-1 py-1 text-xs"
+                value={
+                  activeScheduleId ??
+                  ''
+                }
+                onChange={(event) =>
+                  setActiveScheduleId(
+                    event.target.value ||
+                    null
+                  )
+                }
+              >
+                <option value="">
+                  No active schedule
+                </option>
+
+                {visibleSchedules.map(
+                  (schedule) => (
+                    <option
+                      key={
+                        schedule.id
+                      }
+                      value={
+                        schedule.id
+                      }
+                    >
+                      {schedule.title}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
 
             <div
               className={
                 activeSchedule
-                  ? 'mt-1 text-xs text-emerald-700'
-                  : 'mt-1 text-xs text-amber-700'
+                  ? 'mt-1 text-[10px] text-emerald-700'
+                  : 'mt-1 text-[10px] text-amber-700'
               }
             >
-              {activeSchedule ? (
-                <>
-                  <div>
-                    {activeSchedule.title}
-                  </div>
-
-                  <div className="text-[10px] text-slate-500">
-                    {activeSchedule.locations
-                      .length === 0
-                      ? 'All sites'
-                      : activeSchedule.locations.join(
-                        ', '
-                      )}
-                  </div>
-                </>
-              ) : (
-                'No active schedule'
-              )}
+              {activeSchedule
+                ? activeSchedule.locations
+                  .length === 0
+                  ? 'All sites'
+                  : activeSchedule.locations.join(
+                    ', '
+                  )
+                : 'New stoppages will remain unallocated.'}
             </div>
           </div>
         </div>
@@ -2712,6 +2799,108 @@ function EditableDateTimeCell({
         }
       }}
     />
+  );
+}
+
+function LocationCell({
+  row,
+}) {
+  const locations =
+    row.locations ??
+    (
+      row.location != null
+        ? [row.location]
+        : []
+    );
+
+  return (
+    <div
+      className="flex items-center whitespace-nowrap border-r px-2"
+      title={
+        locations.join(', ')
+      }
+    >
+      {locations.join(', ')}
+    </div>
+  );
+}
+
+function StoppageCell({
+  row,
+  stoppages,
+}) {
+  const stoppageId =
+    row.type === 'stoppage'
+      ? row.id
+      : row.stoppageId ??
+      row.allocatedStoppageId ??
+      null;
+
+  const stoppage =
+    stoppageId == null
+      ? null
+      : stoppages[
+      stoppageId
+      ] ?? null;
+
+  return (
+    <div
+      className="flex items-center overflow-hidden whitespace-nowrap border-r px-2"
+      title={
+        stoppage?.description ??
+        ''
+      }
+    >
+      <span className="truncate">
+        {stoppage?.description ??
+          ''}
+      </span>
+    </div>
+  );
+}
+
+function ScheduleCell({
+  row,
+  schedules,
+  stoppageSchedule,
+}) {
+  const stoppageId =
+    row.type === 'stoppage'
+      ? row.id
+      : row.stoppageId ??
+      row.allocatedStoppageId ??
+      null;
+
+  const scheduleId =
+    row.type === 'schedule'
+      ? row.scheduleId
+      : stoppageId != null
+        ? stoppageSchedule[
+        stoppageId
+        ] ?? null
+        : row.scheduleId ??
+        null;
+
+  const schedule =
+    scheduleId == null
+      ? null
+      : schedules[
+      scheduleId
+      ] ?? null;
+
+  return (
+    <div
+      className="flex items-center overflow-hidden whitespace-nowrap border-r px-2"
+      title={
+        schedule?.title ??
+        ''
+      }
+    >
+      <span className="truncate">
+        {schedule?.title ??
+          ''}
+      </span>
+    </div>
   );
 }
 
@@ -3303,6 +3492,10 @@ function ActionCell({
   allocate,
   remove,
   deleteStoppage,
+  schedules,
+  activeScheduleId,
+  addStoppageToActiveSchedule,
+  removeStoppageFromSchedule,
   hoveredActionGroupKey,
   setHoveredActionGroupKey,
 }) {
@@ -3350,6 +3543,86 @@ function ActionCell({
       : ''
     }`;
 
+  if (
+    row.type === 'stoppage'
+  ) {
+    const assignedSchedule =
+      row.scheduleId == null
+        ? null
+        : schedules[
+        row.scheduleId
+        ] ?? null;
+
+    const activeSchedule =
+      activeScheduleId == null
+        ? null
+        : schedules[
+        activeScheduleId
+        ] ?? null;
+
+    const isScheduled =
+      assignedSchedule != null;
+
+    const isInActiveSchedule =
+      activeScheduleId != null &&
+      row.scheduleId ===
+      activeScheduleId;
+
+    const canAssignToActive =
+      activeSchedule != null &&
+      !isInActiveSchedule;
+
+    return (
+      <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-r px-2 text-[11px]">
+        {canAssignToActive && (
+          <button
+            className="text-sky-700"
+            title={
+              isScheduled
+                ? `Move to ${activeSchedule.title}`
+                : `Add to ${activeSchedule.title}`
+            }
+            onClick={() =>
+              addStoppageToActiveSchedule(
+                row
+              )
+            }
+          >
+            {isScheduled
+              ? '→ Move'
+              : '→ Add'}
+          </button>
+        )}
+
+        {isScheduled && (
+          <button
+            className="text-sky-700"
+            title={`Remove from ${assignedSchedule.title}`}
+            onClick={() =>
+              removeStoppageFromSchedule(
+                row
+              )
+            }
+          >
+            ← Remove
+          </button>
+        )}
+
+        <button
+          className="text-red-700"
+          title={`Delete ${row.description}`}
+          onClick={() =>
+            deleteStoppage(
+              row
+            )
+          }
+        >
+          × Delete
+        </button>
+      </div>
+    );
+  }
+
   // TODO: extract the button out as we may want multiple actions per cell
   // and currently the key is the row type but it may be a composite key if more advanced predicates are required.
   const actions = {
@@ -3378,11 +3651,6 @@ function ActionCell({
       symbol: '＋',
       text: "Create Stoppage with",
     },
-    'stoppage': {
-      action: deleteStoppage,
-      symbol: '×',
-      text: "Delete Stoppage",
-    },
   }
   const action = actions[row.type] ?? null;
   return (
@@ -3407,6 +3675,12 @@ function ActionCell({
 
 function TableRow({
   row,
+  stoppages,
+  stoppageSchedule,
+  schedules,
+  activeScheduleId,
+  addStoppageToActiveSchedule,
+  removeStoppageFromSchedule,
   openForecastDerivation,
   hovered,
   setHoveredRowId,
@@ -3440,14 +3714,23 @@ function TableRow({
       row.durationMinutes * MINUTE
       : null;
 
-  const isGroupingHeader =
-    row.type === 'unallocatedHeader' ||
-    row.type === 'assetUnallocatedHeader' ||
-    row.type ===
-    'assetStoppageReasonsHeader';
+  const isGroupingHeader = [
+    'unallocatedHeader',
+    'assetUnallocatedHeader',
+    'assetStoppageReasonsHeader',
+    'unallocatedStoppagesHeader',
+  ].includes(
+    row.type
+  );
 
   const cellProps = {
     row,
+    stoppages,
+    stoppageSchedule,
+    schedules,
+    activeScheduleId,
+    addStoppageToActiveSchedule,
+    removeStoppageFromSchedule,
     openForecastDerivation,
     hoveredActionGroupKey,
     setHoveredActionGroupKey,
@@ -4784,6 +5067,12 @@ function PanelResizeHandle({
 
 function ItemsPanel({
   rows,
+  stoppages,
+  stoppageSchedule,
+  schedules,
+  activeScheduleId,
+  addStoppageToActiveSchedule,
+  removeStoppageFromSchedule,
   openForecastDerivation,
   hoveredRowId,
   setHoveredRowId,
@@ -5327,6 +5616,24 @@ function ItemsPanel({
                     openForecastDerivation
                   }
                   row={row}
+                  stoppages={
+                    stoppages
+                  }
+                  stoppageSchedule={
+                    stoppageSchedule
+                  }
+                  schedules={
+                    schedules
+                  }
+                  activeScheduleId={
+                    activeScheduleId
+                  }
+                  addStoppageToActiveSchedule={
+                    addStoppageToActiveSchedule
+                  }
+                  removeStoppageFromSchedule={
+                    removeStoppageFromSchedule
+                  }
                   hovered={
                     hoveredRowId === row.id
                   }
@@ -9358,6 +9665,66 @@ function ForecastDerivationModal({
   );
 }
 
+function DeleteStoppageDialog({
+  row,
+  releasedItemCount,
+  confirm,
+  cancel,
+}) {
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-md border border-slate-300 bg-white shadow-xl">
+        <div className="border-b border-slate-300 px-4 py-3 text-sm font-semibold">
+          Delete stoppage
+        </div>
+
+        <div className="p-4 text-xs">
+          <p>
+            Delete “{row.description}”?
+          </p>
+
+          <p className="mt-2 text-slate-600">
+            {releasedItemCount === 0
+              ? 'No work items will be released.'
+              : `${releasedItemCount} ${releasedItemCount === 1
+                ? 'work item'
+                : 'work items'
+              } will be released.`}
+          </p>
+
+          {row.scheduleId != null && (
+            <p className="mt-1 text-slate-600">
+              The stoppage will also be removed from its schedule.
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-300 px-4 py-3">
+          <button
+            type="button"
+            className="border border-slate-300 px-3 py-1.5 text-xs"
+            onClick={cancel}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            className="bg-red-700 px-3 py-1.5 text-xs text-white"
+            onClick={confirm}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlanningGrid() {
   const [screen, setScreen] = React.useState<
     'planning' | 'resourceCapacity'
@@ -9479,6 +9846,11 @@ export default function PlanningGrid() {
   ] = React.useState(null);
 
   const [
+    planningNotice,
+    setPlanningNotice,
+  ] = React.useState(null);
+
+  const [
     stoppages,
     setStoppages,
   ] = React.useState(
@@ -9527,6 +9899,12 @@ export default function PlanningGrid() {
 
   const [editingStoppageId, setEditingStoppageId] =
     React.useState(null);
+
+  const [
+    pendingDeleteStoppage,
+    setPendingDeleteStoppage,
+  ] = React.useState(null);
+
   const renameStoppage = (
     stoppageId,
     description
@@ -10196,19 +10574,96 @@ export default function PlanningGrid() {
     });
   };
 
+  const getInitialScheduleForLocation = (
+    location
+  ) => {
+    if (
+      activeScheduleId == null
+    ) {
+      return null;
+    }
+
+    const activeSchedule =
+      schedules[
+      activeScheduleId
+      ];
+
+    if (
+      !activeSchedule ||
+      !scheduleAcceptsLocation(
+        activeSchedule,
+        location
+      )
+    ) {
+      return null;
+    }
+
+    return activeScheduleId;
+  };
+
+  const createStoppage = ({
+    stoppageId,
+    asset,
+    location,
+    description,
+  }) => {
+    const initialScheduleId =
+      getInitialScheduleForLocation(
+        location
+      );
+
+    setStoppages(
+      (current) => ({
+        ...current,
+        [stoppageId]: {
+          id: stoppageId,
+          asset,
+          location,
+          description,
+          imported: false,
+        },
+      })
+    );
+
+    setStoppageSchedule(
+      (current) => ({
+        ...current,
+        [stoppageId]:
+          initialScheduleId,
+      })
+    );
+
+    if (
+      activeScheduleId != null &&
+      initialScheduleId == null
+    ) {
+      const activeSchedule =
+        schedules[
+        activeScheduleId
+        ];
+
+      setPlanningNotice({
+        type: 'warning',
+        message:
+          `Stoppage created without a schedule because "${activeSchedule?.title ?? activeScheduleId}" does not include ${location}.`,
+      });
+    }
+  };
+
   const allocateWork = (row) => {
     if (row.type === 'asset') {
       const stoppageId =
         `stop-${crypto.randomUUID()}`;
 
-      setStoppages((current) => ({
-        ...current,
-        [stoppageId]: {
-          id: stoppageId,
-          asset: row.asset,
-          description: 'Stoppage',
-        },
-      }));
+      createStoppage({
+        stoppageId,
+        asset:
+          row.asset,
+        location:
+          row.location,
+        description:
+          'Stoppage',
+      });
 
       focusCreatedStoppage(
         row.asset,
@@ -10235,14 +10690,15 @@ export default function PlanningGrid() {
           items
         );
 
-      setStoppages((current) => ({
-        ...current,
-        [stoppageId]: {
-          id: stoppageId,
-          asset: row.asset,
-          description: row.description,
-        },
-      }));
+      createStoppage({
+        stoppageId,
+        asset:
+          row.asset,
+        location:
+          row.location,
+        description:
+          row.description,
+      });
 
       setAllocation((current) => {
         const next = {
@@ -10342,62 +10798,165 @@ export default function PlanningGrid() {
     );
   };
 
+  const addStoppageToActiveSchedule = (
+    row
+  ) => {
+    if (
+      row.type !== 'stoppage' ||
+      activeScheduleId == null
+    ) {
+      return;
+    }
+
+    const activeSchedule =
+      schedules[
+      activeScheduleId
+      ];
+
+    if (!activeSchedule) {
+      return;
+    }
+
+    if (
+      !scheduleAcceptsLocation(
+        activeSchedule,
+        row.location
+      )
+    ) {
+      setPlanningNotice({
+        type: 'warning',
+        message:
+          `"${activeSchedule.title}" does not include ${row.location}. The stoppage was not moved.`,
+      });
+    
+      return;
+    }
+
+    setStoppageSchedule(
+      (current) => ({
+        ...current,
+        [row.id]:
+          activeScheduleId,
+      })
+    );
+
+    flashRows([
+      row.id,
+    ]);
+  };
+
+  const removeStoppageFromSchedule = (
+    row
+  ) => {
+    if (
+      row.type !== 'stoppage'
+    ) {
+      return;
+    }
+
+    setStoppageSchedule(
+      (current) => ({
+        ...current,
+        [row.id]: null,
+      })
+    );
+
+    flashRows([
+      row.id,
+    ]);
+  };
+
   const deleteStoppage = (row) => {
     if (row.type !== 'stoppage') {
       return;
     }
 
-    const releasedItemIds =
-      items
-        .filter(
-          (item) =>
-            item.allocatedStoppageId ===
-            row.id
-        )
-        .map(
-          (item) => item.id
-        );
-
-    setAllocation((current) => {
-      const next = { ...current };
-
-      for (const item of items) {
-        if (item.allocatedStoppageId === row.id) {
-          next[item.id] = null;
-        }
-      }
-
-      return next;
-    });
-
-    setStoppages((current) => {
-      const next = { ...current };
-
-      delete next[row.id];
-
-      return next;
-    });
-
-    setExpanded((current) => {
-      const next = { ...current };
-
-      delete next[row.id];
-      delete next[`${row.id}-unallocated`];
-
-      return next;
-    });
-
-    setOrders((current) => {
-      const next = { ...current };
-      delete next[`allocated:${row.id}`];
-      delete next[`unallocated:${row.id}`];
-      return next;
-    });
-
-    flashRows(
-      releasedItemIds
+    setPendingDeleteStoppage(
+      row
     );
   };
+
+  const confirmDeleteStoppage =
+    () => {
+      const row =
+        pendingDeleteStoppage;
+
+      if (
+        !row ||
+        row.type !== 'stoppage'
+      ) {
+        return;
+      }
+
+      const releasedItemIds =
+        items
+          .filter(
+            (item) =>
+              item.allocatedStoppageId ===
+              row.id
+          )
+          .map(
+            (item) => item.id
+          );
+
+      setAllocation((current) => {
+        const next = { ...current };
+
+        for (const item of items) {
+          if (item.allocatedStoppageId === row.id) {
+            next[item.id] = null;
+          }
+        }
+
+        return next;
+      });
+
+      setStoppages((current) => {
+        const next = { ...current };
+
+        delete next[row.id];
+
+        return next;
+      });
+
+      setStoppageSchedule(
+        (current) => {
+          const next = {
+            ...current,
+          };
+
+          delete next[
+            row.id
+          ];
+
+          return next;
+        }
+      );
+
+      setExpanded((current) => {
+        const next = { ...current };
+
+        delete next[row.id];
+        delete next[`${row.id}-unallocated`];
+
+        return next;
+      });
+
+      setOrders((current) => {
+        const next = { ...current };
+        delete next[`allocated:${row.id}`];
+        delete next[`unallocated:${row.id}`];
+        return next;
+      });
+
+      flashRows(
+        releasedItemIds
+      );
+
+      setPendingDeleteStoppage(
+        null
+      );
+    };
 
   const setRowStart = (
     row,
@@ -10461,13 +11020,6 @@ export default function PlanningGrid() {
     );
   };
 
-  const activeSchedule =
-    activeScheduleId == null
-      ? null
-      : schedules[
-      activeScheduleId
-      ] ?? null;
-
   return (
     <div className="flex h-screen flex-col bg-white text-slate-950">
       <ForecastDerivationModal
@@ -10480,6 +11032,30 @@ export default function PlanningGrid() {
           )
         }
       />
+
+      <DeleteStoppageDialog
+        row={
+          pendingDeleteStoppage
+        }
+        releasedItemCount={
+          pendingDeleteStoppage
+            ? allItems.filter(
+              (item) =>
+                item.allocatedStoppageId ===
+                pendingDeleteStoppage.id
+            ).length
+            : 0
+        }
+        confirm={
+          confirmDeleteStoppage
+        }
+        cancel={() =>
+          setPendingDeleteStoppage(
+            null
+          )
+        }
+      />
+
       <header className="border-b border-slate-300 px-4 py-2">
         <h1 className="text-xl font-bold">Planning grid / stoppage mockup</h1>
         <p className="text-xs text-slate-700">
@@ -10551,12 +11127,46 @@ export default function PlanningGrid() {
               toggleLocation={
                 toggleLocation
               }
-              activeSchedule={
-                activeSchedule
+              schedules={
+                schedules
+              }
+              activeScheduleId={
+                activeScheduleId
+              }
+              setActiveScheduleId={
+                setActiveScheduleId
               }
             />
 
             <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+              {planningNotice && (
+                <div
+                  className={
+                    planningNotice.type ===
+                      'warning'
+                      ? 'flex items-center justify-between border-b border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900'
+                      : 'flex items-center justify-between border-b border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900'
+                  }
+                >
+                  <span>
+                    {planningNotice.message}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="ml-3 shrink-0"
+                    aria-label="Dismiss message"
+                    onClick={() =>
+                      setPlanningNotice(
+                        null
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
               <TimelineControls
                 timelineRange={timelineRange}
                 setTimelineRange={setTimelineRange}
@@ -10585,6 +11195,24 @@ export default function PlanningGrid() {
                 )}
                 <ItemsPanel
                   rows={rows}
+                  stoppages={
+                    stoppages
+                  }
+                  stoppageSchedule={
+                    stoppageSchedule
+                  }
+                  schedules={
+                    schedules
+                  }
+                  activeScheduleId={
+                    activeScheduleId
+                  }
+                  addStoppageToActiveSchedule={
+                    addStoppageToActiveSchedule
+                  }
+                  removeStoppageFromSchedule={
+                    removeStoppageFromSchedule
+                  }
                   openForecastDerivation={
                     openForecastDerivation
                   }
