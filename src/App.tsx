@@ -2720,21 +2720,12 @@ function EditableStoppageDescription({
       <div
         className="min-w-0 flex flex-1 items-center gap-1"
       >
-        <div
-          className="min-w-0 truncate cursor-text"
-          title="Double-click to rename"
-          onDoubleClick={startEditing}
-        >
-          {row.description}
-        </div>
-
         {row.startMs != null && (
           <button
             className="shrink-0 text-slate-500 hover:text-slate-900"
             title="Scroll to stoppage"
             onClick={(event) => {
               event.stopPropagation();
-
               scrollToTime(
                 row.startMs +
                 (
@@ -2751,6 +2742,13 @@ function EditableStoppageDescription({
             <EyeIcon />
           </button>
         )}
+        <div
+          className="min-w-0 truncate cursor-text"
+          title="Double-click to rename"
+          onDoubleClick={startEditing}
+        >
+          {row.description}
+        </div>
       </div>
     );
   }
@@ -3135,6 +3133,27 @@ function ForecastCell({
 
   return (
     <div className="flex items-center gap-1 whitespace-nowrap border-r px-2">
+
+      <button
+        className="shrink-0 text-slate-500 hover:text-slate-900"
+        title="Scroll to forecast"
+        onClick={(event) => {
+          event.stopPropagation();
+
+          scrollToTime(
+            row.forecastMs
+          );
+        }}
+      >
+        <EyeIcon />
+      </button>
+
+      <span title={tooltip}>
+        {formatDateTime(
+          row.forecastMs
+        )}
+      </span>
+
       <button
         className={
           row.forecastWarning
@@ -3153,26 +3172,6 @@ function ForecastCell({
         {getForecastSourceSymbol(
           row
         )}
-      </button>
-
-      <span title={tooltip}>
-        {formatDateTime(
-          row.forecastMs
-        )}
-      </span>
-
-      <button
-        className="shrink-0 text-slate-500 hover:text-slate-900"
-        title="Scroll to forecast"
-        onClick={(event) => {
-          event.stopPropagation();
-
-          scrollToTime(
-            row.forecastMs
-          );
-        }}
-      >
-        <EyeIcon />
       </button>
     </div>
   );
@@ -3425,6 +3424,28 @@ function DescriptionCell({
         </div>
       ) : (
         <div className="min-w-0 flex flex-1 items-center gap-1 truncate">
+          {row.startMs != null && (
+            <button
+              className="shrink-0 text-slate-500 hover:text-slate-900"
+              title="Scroll to scheduled work"
+              onClick={(event) => {
+                event.stopPropagation();
+                scrollToTime(
+                  row.startMs +
+                  (
+                    (
+                      row.durationMinutes ??
+                      0
+                    ) *
+                    MINUTE
+                  ) /
+                  2
+                );
+              }}
+            >
+              <EyeIcon />
+            </button>
+          )}
           {row.type === 'unallocatedHeader' ||
             row.type ===
             'assetUnallocatedHeader' ? (
@@ -3459,28 +3480,6 @@ function DescriptionCell({
             </>
           ) : (
             row.description
-          )}
-          {row.startMs != null && (
-            <button
-              className="shrink-0 text-slate-500 hover:text-slate-900"
-              title="Scroll to scheduled work"
-              onClick={(event) => {
-                event.stopPropagation();
-                scrollToTime(
-                  row.startMs +
-                  (
-                    (
-                      row.durationMinutes ??
-                      0
-                    ) *
-                    MINUTE
-                  ) /
-                  2
-                );
-              }}
-            >
-              <EyeIcon />
-            </button>
           )}
         </div>
       )}
