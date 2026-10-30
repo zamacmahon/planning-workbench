@@ -2136,10 +2136,13 @@ function useTimelineScroll({
   const pendingPrependPixelsRef =
     React.useRef(0);
 
-  const pendingAlignmentMsRef =
-    React.useRef(
-      timelineRange.startMs
-    );
+  const pendingAlignmentRef =
+    React.useRef({
+      targetMs:
+        timelineRange.startMs,
+      viewportOffsetPixels:
+        0,
+    });
 
   const [scrollLeft, setScrollLeft] =
     React.useState(0);
@@ -2212,15 +2215,19 @@ function useTimelineScroll({
     previousStartRef.current =
       timelineRange.bufferedStartMs;
 
-    const alignmentMs =
-      pendingAlignmentMsRef.current;
+    const pendingAlignment =
+      pendingAlignmentRef.current;
 
-    if (alignmentMs != null) {
-      pendingAlignmentMsRef.current =
+    if (
+      pendingAlignment != null
+    ) {
+      pendingAlignmentRef.current =
         null;
 
       alignToTime(
-        alignmentMs
+        pendingAlignment.targetMs,
+        pendingAlignment
+          .viewportOffsetPixels
       );
 
       pendingPrependPixelsRef.current =
@@ -2384,8 +2391,91 @@ function useTimelineScroll({
     panHorizontal,
     requestStartAlignment:
       (startMs) => {
-        pendingAlignmentMsRef.current =
-          startMs;
+        pendingAlignmentRef.current = {
+          targetMs:
+            startMs,
+          viewportOffsetPixels:
+            0,
+        };
+      },
+
+    scrollToTime:
+      (targetMs) => {
+        if (
+          targetMs == null
+        ) {
+          return;
+        }
+
+        const scroller =
+          itemsRef.current;
+
+        if (!scroller) {
+          return;
+        }
+
+        const viewportOffsetPixels =
+          scroller.clientWidth /
+          2;
+
+        const logicalSpanMs =
+          Math.max(
+            HOUR,
+            timelineRange.endMs -
+            timelineRange.startMs
+          );
+
+        const navigationMarginMs =
+          logicalSpanMs *
+          TIMELINE_CONFIG
+            .edgeThresholdViewportFraction;
+
+        const beforeTimeline =
+          targetMs <
+          timelineRange.startMs;
+
+        const afterTimeline =
+          targetMs >
+          timelineRange.endMs;
+
+        if (
+          beforeTimeline ||
+          afterTimeline
+        ) {
+          pendingAlignmentRef.current = {
+            targetMs,
+            viewportOffsetPixels,
+          };
+
+          setTimelineBounds(
+            (current) => ({
+              ...current,
+              startMs:
+                beforeTimeline
+                  ? Math.min(
+                    current.startMs,
+                    targetMs -
+                    navigationMarginMs
+                  )
+                  : current.startMs,
+              endMs:
+                afterTimeline
+                  ? Math.max(
+                    current.endMs,
+                    targetMs +
+                    navigationMarginMs
+                  )
+                  : current.endMs,
+            })
+          );
+
+          return;
+        }
+
+        alignToTime(
+          targetMs,
+          viewportOffsetPixels
+        );
       },
 
     onHeaderScroll: () =>
@@ -4979,11 +5069,11 @@ function TimelineControls({
     if (activeSchedule == null) {
       return;
     }
-  
+
     timeline.requestStartAlignment(
       activeSchedule.startMs
     );
-  
+
     setTimelineRange(
       (current) => ({
         ...current,
@@ -11704,49 +11794,7 @@ export default function PlanningGrid() {
     );
   };
 
-  const scrollToTime = (
-    targetMs
-  ) => {
-    const scroller =
-      timeline.itemsRef.current;
-
-    if (
-      !scroller ||
-      targetMs == null
-    ) {
-      return;
-    }
-
-    const targetPixel =
-      (
-        (targetMs -
-          timelineRange.bufferedStartMs) /
-        HOUR
-      ) *
-      timelineRange.pixelsPerHour;
-
-    const nextScrollLeft =
-      targetPixel -
-      scroller.clientWidth / 2;
-
-    timeline.headerRef.current &&
-      (
-        timeline.headerRef.current.scrollLeft =
-        nextScrollLeft
-      );
-
-    timeline.itemsRef.current &&
-      (
-        timeline.itemsRef.current.scrollLeft =
-        nextScrollLeft
-      );
-
-    timeline.resourcesRef.current &&
-      (
-        timeline.resourcesRef.current.scrollLeft =
-        nextScrollLeft
-      );
-  };
+  const scrollToTime = timeline.scrollToTime;
 
   const resourceSeries =
     calculateResourceSeries(
