@@ -2347,6 +2347,7 @@ function Config({
   activeScheduleId,
   setActiveScheduleId,
   setCreatingSchedule,
+  setEditingScheduleId,
 }) {
   const toggle = (key) =>
     setOverlays((current) => ({
@@ -2617,17 +2618,48 @@ function Config({
                   )
                 : 'New stoppages will remain unallocated.'}
             </div>
-            <button
-              type="button"
-              className="mt-2 w-full border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
-              onClick={() =>
-                setCreatingSchedule(
-                  true
-                )
-              }
-            >
-              + Create schedule
-            </button>
+            <div className="mt-2 flex gap-1">
+              {activeSchedule == null ? (
+                <button
+                  type="button"
+                  className="flex-1 border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                  onClick={() =>
+                    setCreatingSchedule(
+                      true
+                    )
+                  }
+                >
+                  + Create schedule
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="flex-1 border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                    onClick={() =>
+                      setEditingScheduleId(
+                        activeSchedule.id
+                      )
+                    }
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    title="Stop using this as the active schedule"
+                    className="flex-1 border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                    onClick={() =>
+                      setActiveScheduleId(
+                        null
+                      )
+                    }
+                  >
+                    Deselect
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </Accordion>
@@ -10016,8 +10048,11 @@ function getMonthlyScheduleTitle(
 function CreateScheduleDialog({
   open,
   selectedLocations,
+  schedule,
   cancel,
   createSchedule,
+  updateSchedule,
+  requestDelete,
 }) {
   const [
     title,
@@ -10051,6 +10086,28 @@ function CreateScheduleDialog({
       return;
     }
 
+    if (schedule != null) {
+      setTitle(
+        schedule.title
+      );
+      setLocations(
+        new Set(
+          schedule.locations
+        )
+      );
+      setStart(
+        formatDateTimeInput(
+          schedule.startMs
+        )
+      );
+      setEnd(
+        formatDateTimeInput(
+          schedule.endMs
+        )
+      );
+      return;
+    }
+
     setTitle('');
     setLocations(
       new Set(
@@ -10069,6 +10126,7 @@ function CreateScheduleDialog({
     );
   }, [
     open,
+    schedule,
     selectedLocations,
   ]);
 
@@ -10153,7 +10211,7 @@ function CreateScheduleDialog({
       return;
     }
 
-    createSchedule({
+    const values = {
       title:
         title.trim(),
       locations:
@@ -10162,7 +10220,19 @@ function CreateScheduleDialog({
         ),
       startMs,
       endMs,
-    });
+    };
+
+    if (schedule != null) {
+      updateSchedule(
+        schedule.id,
+        values
+      );
+      return;
+    }
+
+    createSchedule(
+      values
+    );
   };
 
   const buildWeeklyTemplate = ({
@@ -10318,7 +10388,9 @@ function CreateScheduleDialog({
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-md border border-slate-300 bg-white shadow-xl">
         <div className="border-b border-slate-300 px-4 py-3 text-sm font-semibold">
-          Create schedule
+          {schedule == null
+            ? 'Create schedule'
+            : 'Edit schedule'}
         </div>
 
         <div className="grid gap-4 p-4 text-xs">
@@ -10473,6 +10545,89 @@ function CreateScheduleDialog({
           </label>
         </div>
 
+        <div className="flex items-center justify-between gap-2 border-t border-slate-300 px-4 py-3">
+          <div>
+            {schedule != null && (
+              <button
+                type="button"
+                className="border border-red-300 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"
+                onClick={() =>
+                  requestDelete(
+                    schedule.id
+                  )
+                }
+              >
+                Delete schedule
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="border border-slate-300 px-3 py-1.5 text-xs"
+              onClick={cancel}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="bg-slate-900 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+              disabled={!canCreate}
+              onClick={submit}
+            >
+              {schedule == null
+                ? 'Create'
+                : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteScheduleDialog({
+  schedule,
+  stoppageCount,
+  confirm,
+  cancel,
+}) {
+  if (!schedule) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-md border border-slate-300 bg-white shadow-xl">
+        <div className="border-b border-slate-300 px-4 py-3 text-sm font-semibold">
+          Delete schedule
+        </div>
+
+        <div className="grid gap-3 p-4 text-xs">
+          <p>
+            Delete “{schedule.title}”?
+          </p>
+
+          <p className="text-slate-600">
+            {stoppageCount === 0
+              ? 'No stoppages will be affected.'
+              : `${stoppageCount} ${stoppageCount === 1
+                ? 'stoppage'
+                : 'stoppages'
+              } will become unscheduled.`}
+          </p>
+
+          {stoppageCount > 0 && (
+            <p className="text-slate-600">
+              The stoppages and their
+              allocated work will not
+              be deleted.
+            </p>
+          )}
+        </div>
+
         <div className="flex justify-end gap-2 border-t border-slate-300 px-4 py-3">
           <button
             type="button"
@@ -10484,11 +10639,10 @@ function CreateScheduleDialog({
 
           <button
             type="button"
-            className="bg-slate-900 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={!canCreate}
-            onClick={submit}
+            className="bg-red-700 px-3 py-1.5 text-xs text-white hover:bg-red-800"
+            onClick={confirm}
           >
-            Create
+            Delete schedule
           </button>
         </div>
       </div>
@@ -10681,36 +10835,29 @@ export default function PlanningGrid() {
     setCreatingSchedule,
   ] = React.useState(false);
 
-  const createSchedule = ({
-    title,
-    locations,
-    startMs,
-    endMs,
-  }) => {
-    const id =
-      `schedule-${Date.now()}`;
+  const [
+    editingScheduleId,
+    setEditingScheduleId,
+  ] = React.useState(null);
 
-    setSchedules(
-      (current) => ({
-        ...current,
-        [id]: {
-          id,
-          title,
-          locations,
-          startMs,
-          endMs,
-        },
-      })
-    );
+  const editingSchedule =
+    editingScheduleId == null
+      ? null
+      : schedules[
+      editingScheduleId
+      ] ?? null;
 
-    setActiveScheduleId(
-      id
-    );
+  const [
+    deletingScheduleId,
+    setDeletingScheduleId,
+  ] = React.useState(null);
 
-    setCreatingSchedule(
-      false
-    );
-  };
+  const deletingSchedule =
+    deletingScheduleId == null
+      ? null
+      : schedules[
+      deletingScheduleId
+      ] ?? null;
 
   const [
     planningNotice,
@@ -10746,6 +10893,133 @@ export default function PlanningGrid() {
         )
       )
   );
+
+
+
+  const createSchedule = ({
+    title,
+    locations,
+    startMs,
+    endMs,
+  }) => {
+    const id =
+      `schedule-${Date.now()}`;
+
+    setSchedules(
+      (current) => ({
+        ...current,
+        [id]: {
+          id,
+          title,
+          locations,
+          startMs,
+          endMs,
+        },
+      })
+    );
+
+    setActiveScheduleId(
+      id
+    );
+
+    setCreatingSchedule(
+      false
+    );
+  };
+
+  const updateSchedule = (
+    id,
+    {
+      title,
+      locations,
+      startMs,
+      endMs,
+    }
+  ) => {
+    setSchedules(
+      (current) => {
+        const schedule =
+          current[id];
+
+        if (schedule == null) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [id]: {
+            ...schedule,
+            title,
+            locations,
+            startMs,
+            endMs,
+          },
+        };
+      }
+    );
+
+    setEditingScheduleId(
+      null
+    );
+  };
+
+  const deleteSchedule = (
+    scheduleId
+  ) => {
+    setSchedules(
+      (current) => {
+        if (
+          current[
+          scheduleId
+          ] == null
+        ) {
+          return current;
+        }
+
+        const next = {
+          ...current,
+        };
+
+        delete next[
+          scheduleId
+        ];
+
+        return next;
+      }
+    );
+
+    setStoppageSchedule(
+      (current) =>
+        Object.fromEntries(
+          Object.entries(
+            current
+          ).map(
+            ([
+              stoppageId,
+              assignedScheduleId,
+            ]) => [
+              stoppageId,
+              assignedScheduleId ===
+                scheduleId
+                ? null
+                : assignedScheduleId,
+            ]
+          )
+        )
+    );
+
+    setActiveScheduleId(
+      (current) =>
+        current ===
+          scheduleId
+          ? null
+          : current
+    );
+
+    setEditingScheduleId(
+      null
+    );
+  };
 
   const [
     allocation,
@@ -11900,19 +12174,81 @@ export default function PlanningGrid() {
         }
       />
 
+      <DeleteScheduleDialog
+        schedule={
+          deletingSchedule
+        }
+        stoppageCount={
+          deletingSchedule == null
+            ? 0
+            : Object.values(
+              stoppages
+            ).filter(
+              (stoppage) =>
+                stoppageSchedule[
+                stoppage.id
+                ] ===
+                deletingSchedule.id
+            ).length
+        }
+        confirm={() => {
+          if (
+            deletingSchedule == null
+          ) {
+            return;
+          }
+
+          deleteSchedule(
+            deletingSchedule.id
+          );
+
+          setDeletingScheduleId(
+            null
+          );
+        }}
+        cancel={() =>
+          setDeletingScheduleId(
+            null
+          )
+        }
+      />
+
       <CreateScheduleDialog
-        open={creatingSchedule}
+        open={
+          creatingSchedule ||
+          editingSchedule != null
+        }
+        schedule={
+          editingSchedule
+        }
+
         selectedLocations={
           selectedLocations
         }
-        cancel={() =>
+        cancel={() => {
           setCreatingSchedule(
             false
-          )
-        }
+          );
+          setEditingScheduleId(
+            null
+          );
+        }}
         createSchedule={
           createSchedule
         }
+        updateSchedule={
+          updateSchedule
+        }
+        requestDelete={(
+          scheduleId
+        ) => {
+          setEditingScheduleId(
+            null
+          );
+          setDeletingScheduleId(
+            scheduleId
+          );
+        }}
       />
 
       <DeleteStoppageDialog
@@ -12020,6 +12356,9 @@ export default function PlanningGrid() {
               }
               setCreatingSchedule={
                 setCreatingSchedule
+              }
+              setEditingScheduleId={
+                setEditingScheduleId
               }
             />
 
