@@ -2357,6 +2357,13 @@ function Config({
     Object.values(
       schedules
     )
+      .filter(
+        (schedule) =>
+          scheduleMatchesLocations(
+            schedule,
+            selectedLocations
+          )
+      )
       .sort(
         (a, b) =>
           a.startMs -
@@ -2365,6 +2372,28 @@ function Config({
             b.title
           )
       );
+
+  const activeScheduleVisible =
+    activeScheduleId == null ||
+    visibleSchedules.some(
+      (schedule) =>
+        schedule.id ===
+        activeScheduleId
+    );
+
+  React.useEffect(() => {
+    if (
+      !activeScheduleVisible
+    ) {
+      setActiveScheduleId(
+        null
+      );
+    }
+  }, [
+    activeScheduleId,
+    activeScheduleVisible,
+    setActiveScheduleId,
+  ]);
 
   const activeSchedule =
     activeScheduleId == null
@@ -10828,7 +10857,7 @@ export default function PlanningGrid() {
         message:
           `"${activeSchedule.title}" does not include ${row.location}. The stoppage was not moved.`,
       });
-    
+
       return;
     }
 
