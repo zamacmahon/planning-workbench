@@ -1254,6 +1254,7 @@ function appendStoppageRows({
   parentLevel,
   stoppage,
   items,
+  schedules,
   expanded,
   orders,
   rangeStartMs,
@@ -1325,6 +1326,26 @@ function appendStoppageRows({
         )
       )
       : null;
+
+  const assignedSchedule =
+    stoppage.scheduleId == null
+      ? null
+      : schedules[
+      stoppage.scheduleId
+      ] ?? null;
+
+  const scheduleBoundaryIssue =
+    assignedSchedule == null ||
+      startMs == null ||
+      finishMs == null
+      ? null
+      : startMs <
+        assignedSchedule.startMs
+        ? 'before'
+        : finishMs >
+          assignedSchedule.endMs
+          ? 'after'
+          : null;
 
   const resourceDemands =
     calculatePeakResourceDemands(
@@ -1422,6 +1443,13 @@ function appendStoppageRows({
       stoppage.location,
     scheduleId:
       stoppage.scheduleId ??
+      null,
+    scheduleBoundaryIssue,
+    scheduleStartMs:
+      assignedSchedule?.startMs ??
+      null,
+    scheduleEndMs:
+      assignedSchedule?.endMs ??
       null,
     priority:
       priorities.length > 0
@@ -1531,6 +1559,7 @@ function appendStoppageRows({
 function deriveAssetRows(
   items,
   stoppages,
+  schedules,
   expanded,
   orders,
   rangeStartMs,
@@ -1731,6 +1760,7 @@ function deriveAssetRows(
         parentLevel: 1,
         stoppage,
         items,
+        schedules,
         expanded,
         orders,
         rangeStartMs,
@@ -1985,6 +2015,7 @@ function deriveScheduleRows(
         parentLevel: 1,
         stoppage,
         items,
+        schedules,
         expanded,
         orders,
         rangeStartMs,
@@ -2055,6 +2086,7 @@ function deriveScheduleRows(
         parentLevel: 1,
         stoppage,
         items,
+        schedules,
         expanded,
         orders,
         rangeStartMs,
@@ -2780,6 +2812,34 @@ function ForecastCross() {
   );
 }
 
+function formatScheduleBoundaryWarning(
+  row
+) {
+  if (
+    row.scheduleBoundaryIssue == null ||
+    row.scheduleStartMs == null ||
+    row.scheduleEndMs == null
+  ) {
+    return '';
+  }
+
+  const issue =
+    row.scheduleBoundaryIssue ===
+      'before'
+      ? 'Stoppage starts before its schedule.'
+      : 'Stoppage finishes after its schedule.';
+
+  return [
+    issue,
+    `Schedule start: ${formatFullDateTime(
+      row.scheduleStartMs
+    )}`,
+    `Schedule end: ${formatFullDateTime(
+      row.scheduleEndMs
+    )}`,
+  ].join('\n');
+}
+
 function EditableStoppageDescription({
   row,
   editing,
@@ -2845,6 +2905,19 @@ function EditableStoppageDescription({
           >
             <EyeIcon />
           </button>
+        )}
+        {row.scheduleBoundaryIssue != null && (
+          <span
+            className="shrink-0 cursor-help text-amber-600"
+            title={
+              formatScheduleBoundaryWarning(
+                row
+              )
+            }
+            aria-label="Stoppage is outside its schedule boundary"
+          >
+            ⚠
+          </span>
         )}
         <div
           className="min-w-0 truncate cursor-text"
@@ -4446,7 +4519,10 @@ function GanttRow({
                 ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-white'
                 : hovered
                   ? 'ring-2 ring-sky-400 ring-offset-1 ring-offset-white'
-                  : ''
+                  : row.type === 'stoppage' &&
+                    row.scheduleBoundaryIssue != null
+                    ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white'
+                    : ''
               }`
             }
             style={{
@@ -4454,26 +4530,38 @@ function GanttRow({
               width: widthFor(durationMs),
               touchAction: 'none',
             }}
-            title={formatWorkTooltip({
-              workOrderId:
-                row.type === 'stoppage'
-                  ? null
-                  : row.workOrderId ?? null,
-              description: row.description,
-              startMs: row.startMs,
-              finishMs:
-                row.startMs + durationMs,
-              forecastMs:
-                row.type === 'stoppage'
-                  ? null
-                  : row.forecastMs ?? null,
-              forecastStartAdvice:
-                row.type === 'stoppage'
-                  ? null
-                  : formatForecastStartAdvice(
-                    row
-                  ),
-            })}
+            title={[
+              formatWorkTooltip({
+                workOrderId:
+                  row.type === 'stoppage'
+                    ? null
+                    : row.workOrderId ?? null,
+                description:
+                  row.description,
+                startMs:
+                  row.startMs,
+                finishMs:
+                  row.startMs +
+                  durationMs,
+                forecastMs:
+                  row.type === 'stoppage'
+                    ? null
+                    : row.forecastMs ?? null,
+                forecastStartAdvice:
+                  row.type === 'stoppage'
+                    ? null
+                    : formatForecastStartAdvice(
+                      row
+                    ),
+              }),
+              row.type === 'stoppage'
+                ? formatScheduleBoundaryWarning(
+                  row
+                )
+                : '',
+            ]
+              .filter(Boolean)
+              .join('\n\n')}
             onPointerEnter={() => {
               setHoveredRowId(
                 row.id
@@ -10998,12 +11086,12 @@ export default function PlanningGrid() {
               stoppageId,
               assignedScheduleId,
             ]) => [
-              stoppageId,
-              assignedScheduleId ===
-                scheduleId
-                ? null
-                : assignedScheduleId,
-            ]
+                stoppageId,
+                assignedScheduleId ===
+                  scheduleId
+                  ? null
+                  : assignedScheduleId,
+              ]
           )
         )
     );
@@ -11396,6 +11484,7 @@ export default function PlanningGrid() {
     deriveAssetRows(
       items,
       effectiveStoppages,
+      schedules,
       expanded,
       orders,
       timelineGeometry.startMs,
