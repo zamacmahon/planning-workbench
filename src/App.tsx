@@ -2346,6 +2346,7 @@ function Config({
   schedules,
   activeScheduleId,
   setActiveScheduleId,
+  setCreatingSchedule,
 }) {
   const toggle = (key) =>
     setOverlays((current) => ({
@@ -2401,6 +2402,44 @@ function Config({
       : schedules[
       activeScheduleId
       ] ?? null;
+
+  const allLocationsSelected =
+    sites.length > 0 &&
+    sites.every(
+      (site) =>
+        selectedLocations.has(
+          site.loc
+        )
+    );
+
+  const someLocationsSelected =
+    sites.some(
+      (site) =>
+        selectedLocations.has(
+          site.loc
+        )
+    );
+
+  const toggleAllLocations = () => {
+    const shouldSelect =
+      !someLocationsSelected;
+
+    for (const site of sites) {
+      const selected =
+        selectedLocations.has(
+          site.loc
+        );
+
+      if (
+        selected !==
+        shouldSelect
+      ) {
+        toggleLocation(
+          site.loc
+        );
+      }
+    }
+  };
 
   return (
     <aside className="h-full overflow-auto border-r border-slate-300 bg-white">
@@ -2463,9 +2502,31 @@ function Config({
 
       <Accordion title="Filters">
         <div className="grid gap-2">
-          <div className="text-[11px] font-semibold">
+          <div className="font-semibold">
             Sites
           </div>
+
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={
+                allLocationsSelected
+              }
+              ref={(input) => {
+                if (input) {
+                  input.indeterminate =
+                    someLocationsSelected &&
+                    !allLocationsSelected;
+                }
+              }}
+              onChange={
+                toggleAllLocations
+              }
+            />
+            <span className="font-semibold">
+              Select all
+            </span>
+          </label>
 
           {sites.map(
             (site) => (
@@ -2556,6 +2617,17 @@ function Config({
                   )
                 : 'New stoppages will remain unallocated.'}
             </div>
+            <button
+              type="button"
+              className="mt-2 w-full border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+              onClick={() =>
+                setCreatingSchedule(
+                  true
+                )
+              }
+            >
+              + Create schedule
+            </button>
           </div>
         </div>
       </Accordion>
@@ -2859,8 +2931,7 @@ function StoppageCell({
   const stoppageId =
     row.type === 'stoppage'
       ? row.id
-      : row.stoppageId ??
-      row.allocatedStoppageId ??
+      : row.allocatedStoppageId ??
       null;
 
   const stoppage =
@@ -2894,8 +2965,7 @@ function ScheduleCell({
   const stoppageId =
     row.type === 'stoppage'
       ? row.id
-      : row.stoppageId ??
-      row.allocatedStoppageId ??
+      : row.allocatedStoppageId ??
       null;
 
   const scheduleId =
@@ -9179,44 +9249,44 @@ function ForecastDerivationContent({
   return (
     <div className="min-h-0 overflow-auto p-4">
       {!isTimeBased && (
-      <section className="mb-4 border border-slate-200 p-3">
-        <div className="mb-2 text-xs font-semibold">
-          Usage Forecast
-        </div>
-
-        <ForecastDerivationChartControls
-          config={
-            chartConfig
-          }
-          setConfig={
-            setChartConfig
-          }
-          reset={() =>
-            setChartConfig(
-              defaultConfig
-            )
-          }
-        />
-
-        {chartConfig.endMs <=
-          chartConfig.startMs ? (
-          <div className="flex h-80 items-center justify-center text-xs text-red-700">
-            Chart end must be after chart start.
+        <section className="mb-4 border border-slate-200 p-3">
+          <div className="mb-2 text-xs font-semibold">
+            Usage Forecast
           </div>
-        ) : (
-          <ForecastDerivationChart
-            derivation={
-              derivation
-            }
+
+          <ForecastDerivationChartControls
             config={
               chartConfig
             }
-            baselineCall={
-              baselineCall
+            setConfig={
+              setChartConfig
+            }
+            reset={() =>
+              setChartConfig(
+                defaultConfig
+              )
             }
           />
-        )}
-      </section>
+
+          {chartConfig.endMs <=
+            chartConfig.startMs ? (
+            <div className="flex h-80 items-center justify-center text-xs text-red-700">
+              Chart end must be after chart start.
+            </div>
+          ) : (
+            <ForecastDerivationChart
+              derivation={
+                derivation
+              }
+              config={
+                chartConfig
+              }
+              baselineCall={
+                baselineCall
+              }
+            />
+          )}
+        </section>
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -9270,29 +9340,29 @@ function ForecastDerivationContent({
 
             {!isTimeBased && (
               <>
-            <dt className="text-slate-500">
-              Forecast usage
-            </dt>
-            <dd>
-              {selectedCall?.forecastHours != null
-                ? `${formatResourceQuantity(
-                  selectedCall.forecastHours
-                )} hrs`
-                : '—'}
-            </dd>
+                <dt className="text-slate-500">
+                  Forecast usage
+                </dt>
+                <dd>
+                  {selectedCall?.forecastHours != null
+                    ? `${formatResourceQuantity(
+                      selectedCall.forecastHours
+                    )} hrs`
+                    : '—'}
+                </dd>
 
-            <dt className="text-slate-500">
-              Baseline call
-            </dt>
-            <dd>
-              {baselineCall
-                ? `${baselineCall.mpCall} · ${formatFullDateTime(
-                  baselineCall.completedMs
-                )} @${formatResourceQuantity(
-                  baselineCall.completionHours
-                )} hrs`
-                : '—'}
-            </dd>
+                <dt className="text-slate-500">
+                  Baseline call
+                </dt>
+                <dd>
+                  {baselineCall
+                    ? `${baselineCall.mpCall} · ${formatFullDateTime(
+                      baselineCall.completedMs
+                    )} @${formatResourceQuantity(
+                      baselineCall.completionHours
+                    )} hrs`
+                    : '—'}
+                </dd>
               </>
             )}
 
@@ -9316,45 +9386,45 @@ function ForecastDerivationContent({
         </section>
 
         {!isTimeBased && (
-        <section className="border border-slate-200 p-3">
-          <h3 className="mb-2 text-xs font-semibold">
-            Predictor
-          </h3>
+          <section className="border border-slate-200 p-3">
+            <h3 className="mb-2 text-xs font-semibold">
+              Predictor
+            </h3>
 
-          <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt className="text-slate-500">
-              Counter
-            </dt>
-            <dd>
-              {derivation.counter ??
-                '—'}
-            </dd>
+            <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-xs">
+              <dt className="text-slate-500">
+                Counter
+              </dt>
+              <dd>
+                {derivation.counter ??
+                  '—'}
+              </dd>
 
-            <dt className="text-slate-500">
-              Readings
-            </dt>
-            <dd>
-              {derivation.predictorSnapshot
-                ?.points.length ?? 0}
-            </dd>
+              <dt className="text-slate-500">
+                Readings
+              </dt>
+              <dd>
+                {derivation.predictorSnapshot
+                  ?.points.length ?? 0}
+              </dd>
 
-            <dt className="text-slate-500">
-              Direction
-            </dt>
-            <dd>
-              {derivation.predictorSnapshot
-                ?.direction ?? '—'}
-            </dd>
+              <dt className="text-slate-500">
+                Direction
+              </dt>
+              <dd>
+                {derivation.predictorSnapshot
+                  ?.direction ?? '—'}
+              </dd>
 
-            <dt className="text-slate-500">
-              Predictor error
-            </dt>
-            <dd>
-              {derivation.predictorError ??
-                'None'}
-            </dd>
-          </dl>
-        </section>
+              <dt className="text-slate-500">
+                Predictor error
+              </dt>
+              <dd>
+                {derivation.predictorError ??
+                  'None'}
+              </dd>
+            </dl>
+          </section>
         )}
       </div>
 
@@ -9381,17 +9451,17 @@ function ForecastDerivationContent({
                   Completed
                 </th>
                 {!isTimeBased && (
-                <th className="px-2 py-1">
-                  Completion Usage
-                </th>
+                  <th className="px-2 py-1">
+                    Completion Usage
+                  </th>
                 )}
                 <th className="px-2 py-1">
                   Forecast
                 </th>
                 {!isTimeBased && (
-                <th className="px-2 py-1">
-                  Forecast Usage
-                </th>
+                  <th className="px-2 py-1">
+                    Forecast Usage
+                  </th>
                 )}
                 <th className="px-2 py-1">
                   Source
@@ -9464,13 +9534,13 @@ function ForecastDerivationContent({
                       </td>
 
                       {!isTimeBased && (
-                      <td className="px-2 py-1">
-                        {call.completionHours != null
-                          ? formatResourceQuantity(
-                            call.completionHours
-                          )
-                          : '—'}
-                      </td>
+                        <td className="px-2 py-1">
+                          {call.completionHours != null
+                            ? formatResourceQuantity(
+                              call.completionHours
+                            )
+                            : '—'}
+                        </td>
                       )}
 
                       <td className="px-2 py-1">
@@ -9482,13 +9552,13 @@ function ForecastDerivationContent({
                       </td>
 
                       {!isTimeBased && (
-                      <td className="px-2 py-1">
-                        {call.forecastHours != null
-                          ? formatResourceQuantity(
-                            call.forecastHours
-                          )
-                          : '—'}
-                      </td>
+                        <td className="px-2 py-1">
+                          {call.forecastHours != null
+                            ? formatResourceQuantity(
+                              call.forecastHours
+                            )
+                            : '—'}
+                        </td>
                       )}
 
                       <td className="px-2 py-1">
@@ -9506,120 +9576,120 @@ function ForecastDerivationContent({
 
       {!isTimeBased && (
         <>
-      <CollapsibleForecastSection
-        title={`Counter Readings (${derivation.readings.length})`}
-        defaultOpen={false}
-      >
-        <div className="max-h-80 overflow-auto">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead className="sticky top-0 bg-slate-50">
-              <tr>
-                <th className="px-2 py-1">
-                  Date
-                </th>
+          <CollapsibleForecastSection
+            title={`Counter Readings (${derivation.readings.length})`}
+            defaultOpen={false}
+          >
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr>
+                    <th className="px-2 py-1">
+                      Date
+                    </th>
 
-                <th className="px-2 py-1 text-right">
-                  Usage
-                </th>
+                    <th className="px-2 py-1 text-right">
+                      Usage
+                    </th>
 
-                <th className="px-2 py-1 text-right">
-                  Reading
-                </th>
+                    <th className="px-2 py-1 text-right">
+                      Reading
+                    </th>
 
-                <th className="px-2 py-1 text-right">
-                  Usage Change
-                </th>
+                    <th className="px-2 py-1 text-right">
+                      Usage Change
+                    </th>
 
-                <th className="px-2 py-1 text-right">
-                  Reading Change
-                </th>
-              </tr>
-            </thead>
+                    <th className="px-2 py-1 text-right">
+                      Reading Change
+                    </th>
+                  </tr>
+                </thead>
 
-            <tbody>
-              {derivation.readings.map(
-                (
-                  reading,
-                  index
-                ) => {
-                  const previous =
-                    index === 0
-                      ? null
-                      : derivation.readings[
-                      index - 1
-                      ];
+                <tbody>
+                  {derivation.readings.map(
+                    (
+                      reading,
+                      index
+                    ) => {
+                      const previous =
+                        index === 0
+                          ? null
+                          : derivation.readings[
+                          index - 1
+                          ];
 
-                  const usageChange =
-                    previous == null
-                      ? null
-                      : reading.usage -
-                      previous.usage;
+                      const usageChange =
+                        previous == null
+                          ? null
+                          : reading.usage -
+                          previous.usage;
 
-                  const readingChange =
-                    previous == null
-                      ? null
-                      : reading.reading -
-                      previous.reading;
+                      const readingChange =
+                        previous == null
+                          ? null
+                          : reading.reading -
+                          previous.reading;
 
-                  return (
-                    <tr
-                      key={`${reading.whenMs}-${index}`}
-                      className="border-t border-slate-100"
-                    >
-                      <td className="whitespace-nowrap px-2 py-1">
-                        {formatFullDateTime(
-                          reading.whenMs
-                        )}
-                      </td>
+                      return (
+                        <tr
+                          key={`${reading.whenMs}-${index}`}
+                          className="border-t border-slate-100"
+                        >
+                          <td className="whitespace-nowrap px-2 py-1">
+                            {formatFullDateTime(
+                              reading.whenMs
+                            )}
+                          </td>
 
-                      <td className="px-2 py-1 text-right">
-                        {formatResourceQuantity(
-                          reading.usage
-                        )}
-                      </td>
+                          <td className="px-2 py-1 text-right">
+                            {formatResourceQuantity(
+                              reading.usage
+                            )}
+                          </td>
 
-                      <td className="px-2 py-1 text-right">
-                        {formatResourceQuantity(
-                          reading.reading
-                        )}
-                      </td>
+                          <td className="px-2 py-1 text-right">
+                            {formatResourceQuantity(
+                              reading.reading
+                            )}
+                          </td>
 
-                      <td className="px-2 py-1 text-right">
-                        {usageChange == null
-                          ? '—'
-                          : formatSignedQuantity(
-                            usageChange
-                          )}
-                      </td>
+                          <td className="px-2 py-1 text-right">
+                            {usageChange == null
+                              ? '—'
+                              : formatSignedQuantity(
+                                usageChange
+                              )}
+                          </td>
 
-                      <td
-                        className={
-                          readingChange != null &&
-                            readingChange < 0
-                            ? 'px-2 py-1 text-right text-amber-700'
-                            : 'px-2 py-1 text-right'
-                        }
-                        title={
-                          readingChange != null &&
-                            readingChange < 0
-                            ? 'Physical meter reading decreased. This may indicate a meter reset.'
-                            : undefined
-                        }
-                      >
-                        {readingChange == null
-                          ? '—'
-                          : formatSignedQuantity(
-                            readingChange
-                          )}
-                      </td>
-                    </tr>
-                  );
-                }
-              )}
-            </tbody>
-          </table>
-        </div>
-      </CollapsibleForecastSection>
+                          <td
+                            className={
+                              readingChange != null &&
+                                readingChange < 0
+                                ? 'px-2 py-1 text-right text-amber-700'
+                                : 'px-2 py-1 text-right'
+                            }
+                            title={
+                              readingChange != null &&
+                                readingChange < 0
+                                ? 'Physical meter reading decreased. This may indicate a meter reset.'
+                                : undefined
+                            }
+                          >
+                            {readingChange == null
+                              ? '—'
+                              : formatSignedQuantity(
+                                readingChange
+                              )}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CollapsibleForecastSection>
         </>
       )}
     </div>
@@ -9712,6 +9782,704 @@ function ForecastDerivationModal({
               item
             }
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getIsoWeekParts(
+  when
+) {
+  const date =
+    new Date(
+      Date.UTC(
+        when.getFullYear(),
+        when.getMonth(),
+        when.getDate()
+      )
+    );
+
+  const day =
+    date.getUTCDay() || 7;
+
+  date.setUTCDate(
+    date.getUTCDate() +
+    4 -
+    day
+  );
+
+  const isoYear =
+    date.getUTCFullYear();
+
+  const yearStart =
+    new Date(
+      Date.UTC(
+        isoYear,
+        0,
+        1
+      )
+    );
+
+  const isoWeek =
+    Math.ceil(
+      (
+        (
+          date.getTime() -
+          yearStart.getTime()
+        ) /
+        DAY +
+        1
+      ) /
+      7
+    );
+
+  return {
+    isoYear,
+    isoWeek,
+  };
+}
+
+function getNextWeeklyStart({
+  weekday,
+  hour,
+  minute,
+  weekOffset = 0,
+}) {
+  const now =
+    new Date();
+
+  const start =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hour,
+      minute,
+      0,
+      0
+    );
+
+  const daysUntil =
+    (
+      weekday -
+      start.getDay() +
+      7
+    ) %
+    7;
+
+  start.setDate(
+    start.getDate() +
+    daysUntil
+  );
+
+  if (
+    start.getTime() <=
+    now.getTime()
+  ) {
+    start.setDate(
+      start.getDate() +
+      7
+    );
+  }
+
+  start.setDate(
+    start.getDate() +
+    weekOffset * 7
+  );
+
+  return start;
+}
+
+function getNextMonthlyStart() {
+  const now =
+    new Date();
+
+  return new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    1,
+    6,
+    0,
+    0,
+    0
+  );
+}
+
+function getScheduleSiteTitle(
+  locations
+) {
+  const selectedSites =
+    sites.filter(
+      (site) =>
+        locations.has(
+          site.loc
+        )
+    );
+
+  if (
+    selectedSites.length === 1
+  ) {
+    return selectedSites[0]
+      .locName;
+  }
+
+  if (
+    selectedSites.length > 1
+  ) {
+    return selectedSites
+      .map(
+        (site) =>
+          site.loc
+      )
+      .join(' + ');
+  }
+
+  return '';
+}
+
+function getWeeklyScheduleTitle(
+  locations,
+  start
+) {
+  const {
+    isoYear,
+    isoWeek,
+  } = getIsoWeekParts(
+    start
+  );
+
+  const week =
+    `${isoYear}-W${String(
+      isoWeek
+    ).padStart(
+      2,
+      '0'
+    )}`;
+
+  const siteTitle =
+    getScheduleSiteTitle(
+      locations
+    );
+
+  if (
+    locations.size === 1
+  ) {
+    return `${siteTitle} Maintenance Schedule Week ${week}`;
+  }
+
+  if (
+    locations.size > 1
+  ) {
+    return `${siteTitle} Maintenance Schedule ${week}`;
+  }
+
+  return `Maintenance Schedule Week ${week}`;
+}
+
+function getMonthlyScheduleTitle(
+  locations,
+  start
+) {
+  const year =
+    start.getFullYear();
+
+  const monthNumber =
+    String(
+      start.getMonth() + 1
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const monthName =
+    start.toLocaleDateString(
+      'en-AU',
+      {
+        month: 'long',
+      }
+    );
+
+  const siteTitle =
+    getScheduleSiteTitle(
+      locations
+    );
+
+  const prefix =
+    siteTitle.length > 0
+      ? `${siteTitle} `
+      : '';
+
+  return `${prefix}Maintenance Schedule ${year}-${monthNumber} ${monthName} ${year}`;
+}
+
+function CreateScheduleDialog({
+  open,
+  selectedLocations,
+  cancel,
+  createSchedule,
+}) {
+  const [
+    title,
+    setTitle,
+  ] = React.useState('');
+  const [
+    locations,
+    setLocations,
+  ] = React.useState(
+    new Set()
+  );
+  const [
+    start,
+    setStart,
+  ] = React.useState(
+    formatDateTimeInput(
+      DEFAULT_TIMELINE_START
+    )
+  );
+  const [
+    end,
+    setEnd,
+  ] = React.useState(
+    formatDateTimeInput(
+      DEFAULT_TIMELINE_END
+    )
+  );
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setTitle('');
+    setLocations(
+      new Set(
+        selectedLocations
+      )
+    );
+    setStart(
+      formatDateTimeInput(
+        DEFAULT_TIMELINE_START
+      )
+    );
+    setEnd(
+      formatDateTimeInput(
+        DEFAULT_TIMELINE_END
+      )
+    );
+  }, [
+    open,
+    selectedLocations,
+  ]);
+
+  if (!open) {
+    return null;
+  }
+
+  const toggleLocation = (
+    location
+  ) => {
+    setLocations(
+      (current) => {
+        const next =
+          new Set(current);
+
+        if (
+          next.has(location)
+        ) {
+          next.delete(
+            location
+          );
+        } else {
+          next.add(
+            location
+          );
+        }
+
+        return next;
+      }
+    );
+  };
+
+  const allLocationsSelected =
+    sites.length > 0 &&
+    sites.every(
+      (site) =>
+        locations.has(
+          site.loc
+        )
+    );
+
+  const someLocationsSelected =
+    sites.some(
+      (site) =>
+        locations.has(
+          site.loc
+        )
+    );
+
+  const toggleAllLocations = () => {
+    setLocations(
+      allLocationsSelected ||
+        someLocationsSelected
+        ? new Set()
+        : new Set(
+          sites.map(
+            (site) =>
+              site.loc
+          )
+        )
+    );
+  };
+
+  const startMs =
+    new Date(start).getTime();
+
+  const endMs =
+    new Date(end).getTime();
+
+  const canCreate =
+    title.trim().length > 0 &&
+    Number.isFinite(
+      startMs
+    ) &&
+    Number.isFinite(
+      endMs
+    ) &&
+    endMs > startMs;
+
+  const submit = () => {
+    if (!canCreate) {
+      return;
+    }
+
+    createSchedule({
+      title:
+        title.trim(),
+      locations:
+        Array.from(
+          locations
+        ),
+      startMs,
+      endMs,
+    });
+  };
+
+  const buildWeeklyTemplate = ({
+    weekday,
+    hour,
+    minute,
+    weekOffset,
+    label,
+  }) => {
+    const templateStart =
+      getNextWeeklyStart({
+        weekday,
+        hour,
+        minute,
+        weekOffset,
+      });
+
+    const templateEnd =
+      new Date(
+        templateStart.getTime() +
+        7 * DAY
+      );
+
+    return {
+      label,
+      start:
+        templateStart,
+      end:
+        templateEnd,
+      title:
+        getWeeklyScheduleTitle(
+          locations,
+          templateStart
+        ),
+    };
+  };
+
+  const monthlyStart =
+    getNextMonthlyStart();
+
+  const monthlyEnd =
+    new Date(
+      monthlyStart.getFullYear(),
+      monthlyStart.getMonth() + 1,
+      1,
+      monthlyStart.getHours(),
+      monthlyStart.getMinutes(),
+      0,
+      0
+    );
+
+  const scheduleTemplates = [
+    buildWeeklyTemplate({
+      weekday: 1,
+      hour: 6,
+      minute: 0,
+      weekOffset: 0,
+      label:
+        'Monday 06:00 · next week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 1,
+      hour: 5,
+      minute: 30,
+      weekOffset: 0,
+      label:
+        'Monday 05:30 · next week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 4,
+      hour: 6,
+      minute: 0,
+      weekOffset: 0,
+      label:
+        'Thursday 06:00 · next week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 4,
+      hour: 5,
+      minute: 30,
+      weekOffset: 0,
+      label:
+        'Thursday 05:30 · next week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 1,
+      hour: 6,
+      minute: 0,
+      weekOffset: 1,
+      label:
+        'Monday 06:00 · following week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 1,
+      hour: 5,
+      minute: 30,
+      weekOffset: 1,
+      label:
+        'Monday 05:30 · following week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 4,
+      hour: 6,
+      minute: 0,
+      weekOffset: 1,
+      label:
+        'Thursday 06:00 · following week',
+    }),
+    buildWeeklyTemplate({
+      weekday: 4,
+      hour: 5,
+      minute: 30,
+      weekOffset: 1,
+      label:
+        'Thursday 05:30 · following week',
+    }),
+    {
+      label:
+        'Monthly · next month',
+      start:
+        monthlyStart,
+      end:
+        monthlyEnd,
+      title:
+        getMonthlyScheduleTitle(
+          locations,
+          monthlyStart
+        ),
+    },
+  ];
+
+  const applyScheduleTemplate = (
+    template
+  ) => {
+    setTitle(
+      template.title
+    );
+
+    setStart(
+      formatDateTimeInput(
+        template.start.getTime()
+      )
+    );
+
+    setEnd(
+      formatDateTimeInput(
+        template.end.getTime()
+      )
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-md border border-slate-300 bg-white shadow-xl">
+        <div className="border-b border-slate-300 px-4 py-3 text-sm font-semibold">
+          Create schedule
+        </div>
+
+        <div className="grid gap-4 p-4 text-xs">
+          <div className="grid gap-2">
+            <div className="font-semibold">
+              Sites
+            </div>
+
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={
+                  allLocationsSelected
+                }
+                ref={(input) => {
+                  if (input) {
+                    input.indeterminate =
+                      someLocationsSelected &&
+                      !allLocationsSelected;
+                  }
+                }}
+                onChange={
+                  toggleAllLocations
+                }
+              />
+              <span className="font-semibold">
+                Select all
+              </span>
+            </label>
+
+            {sites.map(
+              (site) => (
+                <label
+                  key={site.loc}
+                  className="flex items-start gap-2"
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      locations.has(
+                        site.loc
+                      )
+                    }
+                    onChange={() =>
+                      toggleLocation(
+                        site.loc
+                      )
+                    }
+                  />
+                  <span>
+                    <span className="font-semibold">
+                      {site.loc}
+                    </span>
+                    <span className="ml-1 text-slate-500">
+                      {site.locName}
+                    </span>
+                  </span>
+                </label>
+              )
+            )}
+
+            <div className="text-[10px] text-slate-500">
+              No sites selected means
+              the schedule applies to
+              all sites.
+            </div>
+
+            <div className="grid gap-2">
+              <div className="font-semibold">
+                Templates
+              </div>
+
+              <div className="grid grid-cols-2 gap-1">
+                {scheduleTemplates.map(
+                  (template) => (
+                    <button
+                      key={
+                        template.label
+                      }
+                      type="button"
+                      className="border border-slate-300 bg-white px-2 py-1.5 text-left text-[11px] hover:bg-slate-50"
+                      onClick={() =>
+                        applyScheduleTemplate(
+                          template
+                        )
+                      }
+                    >
+                      {template.label}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+
+          <label className="grid gap-1">
+            <span className="font-semibold">
+              Title
+            </span>
+            <input
+              type="text"
+              className="border border-slate-300 px-2 py-1.5"
+              value={title}
+              onChange={(event) =>
+                setTitle(
+                  event.target.value
+                )
+              }
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="font-semibold">
+              Start
+            </span>
+            <input
+              type="datetime-local"
+              className="border border-slate-300 px-2 py-1.5"
+              value={start}
+              onChange={(event) =>
+                setStart(
+                  event.target.value
+                )
+              }
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="font-semibold">
+              End
+            </span>
+            <input
+              type="datetime-local"
+              className="border border-slate-300 px-2 py-1.5"
+              value={end}
+              onChange={(event) =>
+                setEnd(
+                  event.target.value
+                )
+              }
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-300 px-4 py-3">
+          <button
+            type="button"
+            className="border border-slate-300 px-3 py-1.5 text-xs"
+            onClick={cancel}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            className="bg-slate-900 px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={!canCreate}
+            onClick={submit}
+          >
+            Create
+          </button>
         </div>
       </div>
     </div>
@@ -9897,6 +10665,42 @@ export default function PlanningGrid() {
     activeScheduleId,
     setActiveScheduleId,
   ] = React.useState(null);
+
+  const [
+    creatingSchedule,
+    setCreatingSchedule,
+  ] = React.useState(false);
+
+  const createSchedule = ({
+    title,
+    locations,
+    startMs,
+    endMs,
+  }) => {
+    const id =
+      `schedule-${Date.now()}`;
+
+    setSchedules(
+      (current) => ({
+        ...current,
+        [id]: {
+          id,
+          title,
+          locations,
+          startMs,
+          endMs,
+        },
+      })
+    );
+
+    setActiveScheduleId(
+      id
+    );
+
+    setCreatingSchedule(
+      false
+    );
+  };
 
   const [
     planningNotice,
@@ -11086,6 +11890,21 @@ export default function PlanningGrid() {
         }
       />
 
+      <CreateScheduleDialog
+        open={creatingSchedule}
+        selectedLocations={
+          selectedLocations
+        }
+        cancel={() =>
+          setCreatingSchedule(
+            false
+          )
+        }
+        createSchedule={
+          createSchedule
+        }
+      />
+
       <DeleteStoppageDialog
         row={
           pendingDeleteStoppage
@@ -11188,6 +12007,9 @@ export default function PlanningGrid() {
               }
               setActiveScheduleId={
                 setActiveScheduleId
+              }
+              setCreatingSchedule={
+                setCreatingSchedule
               }
             />
 
