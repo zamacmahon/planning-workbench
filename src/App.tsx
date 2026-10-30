@@ -55,7 +55,7 @@ const DEFAULT_COLUMNS = [
     key: 'description',
     label: 'Description',
     shortLabel: 'Desc',
-    width: 300,
+    width: 360,
     render: DescriptionCell,
   },
   {
@@ -109,7 +109,7 @@ const DEFAULT_COLUMNS = [
   {
     key: 'forecast',
     label: 'Forecast',
-    width: 100,
+    width: 120,
     render: ForecastCell,
   },
   {
@@ -3157,8 +3157,8 @@ function ForecastCell({
       <button
         className={
           row.forecastWarning
-            ? 'shrink-0 text-amber-700 hover:text-amber-900'
-            : 'shrink-0 text-slate-500 hover:text-slate-900'
+            ? 'shrink-0 text-amber-700 hover:text-amber-900 cursor-help'
+            : 'shrink-0 text-slate-500 hover:text-slate-900 cursor-help'
         }
         title={`${tooltip}\nClick to view forecast derivation.`}
         onClick={(event) => {
@@ -9171,8 +9171,14 @@ function ForecastDerivationContent({
           a.mpCall
       )[0] ?? null;
 
+  const isTimeBased =
+    derivation.strategy
+      ?.startsWith('T') ??
+    false;
+
   return (
     <div className="min-h-0 overflow-auto p-4">
+      {!isTimeBased && (
       <section className="mb-4 border border-slate-200 p-3">
         <div className="mb-2 text-xs font-semibold">
           Usage Forecast
@@ -9211,6 +9217,7 @@ function ForecastDerivationContent({
           />
         )}
       </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="border border-slate-200 p-3">
@@ -9261,6 +9268,8 @@ function ForecastDerivationContent({
                 : '—'}
             </dd>
 
+            {!isTimeBased && (
+              <>
             <dt className="text-slate-500">
               Forecast usage
             </dt>
@@ -9284,6 +9293,8 @@ function ForecastDerivationContent({
                 )} hrs`
                 : '—'}
             </dd>
+              </>
+            )}
 
             <dt className="text-slate-500">
               Source
@@ -9304,6 +9315,7 @@ function ForecastDerivationContent({
           </dl>
         </section>
 
+        {!isTimeBased && (
         <section className="border border-slate-200 p-3">
           <h3 className="mb-2 text-xs font-semibold">
             Predictor
@@ -9343,6 +9355,7 @@ function ForecastDerivationContent({
             </dd>
           </dl>
         </section>
+        )}
       </div>
 
       <CollapsibleForecastSection
@@ -9367,15 +9380,19 @@ function ForecastDerivationContent({
                 <th className="px-2 py-1">
                   Completed
                 </th>
+                {!isTimeBased && (
                 <th className="px-2 py-1">
                   Completion Usage
                 </th>
+                )}
                 <th className="px-2 py-1">
                   Forecast
                 </th>
+                {!isTimeBased && (
                 <th className="px-2 py-1">
                   Forecast Usage
                 </th>
+                )}
                 <th className="px-2 py-1">
                   Source
                 </th>
@@ -9446,6 +9463,7 @@ function ForecastDerivationContent({
                           : '—'}
                       </td>
 
+                      {!isTimeBased && (
                       <td className="px-2 py-1">
                         {call.completionHours != null
                           ? formatResourceQuantity(
@@ -9453,6 +9471,7 @@ function ForecastDerivationContent({
                           )
                           : '—'}
                       </td>
+                      )}
 
                       <td className="px-2 py-1">
                         {call.forecastMs != null
@@ -9462,6 +9481,7 @@ function ForecastDerivationContent({
                           : '—'}
                       </td>
 
+                      {!isTimeBased && (
                       <td className="px-2 py-1">
                         {call.forecastHours != null
                           ? formatResourceQuantity(
@@ -9469,6 +9489,7 @@ function ForecastDerivationContent({
                           )
                           : '—'}
                       </td>
+                      )}
 
                       <td className="px-2 py-1">
                         {call.forecastSource ??
@@ -9483,6 +9504,8 @@ function ForecastDerivationContent({
         </div>
       </CollapsibleForecastSection>
 
+      {!isTimeBased && (
+        <>
       <CollapsibleForecastSection
         title={`Counter Readings (${derivation.readings.length})`}
         defaultOpen={false}
@@ -9597,6 +9620,8 @@ function ForecastDerivationContent({
           </table>
         </div>
       </CollapsibleForecastSection>
+        </>
+      )}
     </div>
   );
 }
