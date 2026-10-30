@@ -10400,6 +10400,16 @@ function CreateScheduleDialog({
                       }
                       type="button"
                       className="border border-slate-300 bg-white px-2 py-1.5 text-left text-[11px] hover:bg-slate-50"
+                      title={[
+                        template.title,
+                        '',
+                        `Start: ${formatFullDateTime(
+                          template.start.getTime()
+                        )}`,
+                        `End: ${formatFullDateTime(
+                          template.end.getTime()
+                        )}`,
+                      ].join('\n')}
                       onClick={() =>
                         applyScheduleTemplate(
                           template
