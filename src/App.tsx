@@ -259,6 +259,30 @@ function getZoomLevel(
   );
 }
 
+function floorTimelineTime(
+  value,
+  stepMs
+) {
+  return (
+    Math.floor(
+      value / stepMs
+    ) *
+    stepMs
+  );
+}
+
+function ceilTimelineTime(
+  value,
+  stepMs
+) {
+  return (
+    Math.ceil(
+      value / stepMs
+    ) *
+    stepMs
+  );
+}
+
 const PRIORITIES = {
   1: { label: 'Very High', colour: '#dc2626', symbol: '⬟' },
   2: { label: 'High', colour: '#f97316', symbol: '◆' },
@@ -2161,6 +2185,74 @@ function useTimelineScroll({
     zoomLevel.tickHours *
     HOUR;
 
+  const extendTimelineBounds = ({
+    startMs,
+    endMs,
+  }) => {
+    setTimelineBounds(
+      (current) => {
+        const nextStartMs =
+          startMs == null
+            ? current.startMs
+            : Math.min(
+              current.startMs,
+              startMs
+            );
+
+        const nextEndMs =
+          endMs == null
+            ? current.endMs
+            : Math.max(
+              current.endMs,
+              endMs
+            );
+
+        if (
+          nextStartMs ===
+          current.startMs &&
+          nextEndMs ===
+          current.endMs
+        ) {
+          return current;
+        }
+
+        const nextBufferedBounds =
+          getTimelineBufferedBounds(
+            nextStartMs,
+            nextEndMs
+          );
+
+        if (
+          nextBufferedBounds
+            .bufferedStartMs <
+          current.bufferedStartMs
+        ) {
+          pendingPrependPixelsRef.current +=
+            (
+              (
+                current.bufferedStartMs -
+                nextBufferedBounds
+                  .bufferedStartMs
+              ) /
+              HOUR
+            ) *
+            current.pixelsPerHour;
+        }
+
+        extendingRef.current =
+          true;
+
+        return {
+          ...current,
+          startMs:
+            nextStartMs,
+          endMs:
+            nextEndMs,
+        };
+      }
+    );
+  };
+
   const setAllScrollLeft = (
     nextScrollLeft,
     sourceRef = null
@@ -2389,6 +2481,64 @@ function useTimelineScroll({
     resourcesRef,
     scrollLeft,
     panHorizontal,
+    extendForDraggedRange: (
+      earliestStartMs,
+      latestEndMs
+    ) => {
+      const scroller =
+        itemsRef.current;
+
+      const stepMs =
+        zoomLevel.tickHours *
+        HOUR;
+
+      const viewportMarginMs =
+        scroller == null
+          ? stepMs
+          : (
+            (
+              scroller.clientWidth *
+              TIMELINE_CONFIG
+                .edgeThresholdViewportFraction
+            ) /
+            timelineRange.pixelsPerHour
+          ) *
+          HOUR;
+
+      const requiredStartMs =
+        earliestStartMs <
+          timelineRange.startMs
+          ? floorTimelineTime(
+            earliestStartMs -
+            viewportMarginMs,
+            stepMs
+          )
+          : null;
+
+      const requiredEndMs =
+        latestEndMs >
+          timelineRange.endMs
+          ? ceilTimelineTime(
+            latestEndMs +
+            viewportMarginMs,
+            stepMs
+          )
+          : null;
+
+      if (
+        requiredStartMs == null &&
+        requiredEndMs == null
+      ) {
+        return;
+      }
+
+      extendTimelineBounds({
+        startMs:
+          requiredStartMs,
+        endMs:
+          requiredEndMs,
+      });
+    },
     requestStartAlignment:
       (startMs) => {
         pendingAlignmentRef.current = {
@@ -11911,23 +12061,67 @@ export default function PlanningGrid() {
 
     const move = (moveEvent) => {
       const pixelDelta =
-        moveEvent.clientX - originX;
+        moveEvent.clientX -
+        originX;
 
       const timeDelta =
-        (pixelDelta /
-          timelineGeometry.pixelsPerHour) *
+        (
+          pixelDelta /
+          timelineGeometry.pixelsPerHour
+        ) *
         HOUR;
 
       const snappedDelta =
-        snapDuration(timeDelta);
+        snapDuration(
+          timeDelta
+        );
+
+      const updates =
+        members.map(
+          (item) => ({
+            id:
+              item.id,
+            startMs:
+              origins[item.id] +
+              snappedDelta,
+            endMs:
+              origins[item.id] +
+              snappedDelta +
+              item.durationMinutes *
+              MINUTE,
+          })
+        );
+
+      const earliestStartMs =
+        Math.min(
+          ...updates.map(
+            (update) =>
+              update.startMs
+          )
+        );
+
+      const latestEndMs =
+        Math.max(
+          ...updates.map(
+            (update) =>
+              update.endMs
+          )
+        );
+
+      timeline.extendForDraggedRange(
+        earliestStartMs,
+        latestEndMs
+      );
 
       setManyStarts(
-        members.map((item) => ({
-          id: item.id,
-          startMs:
-            origins[item.id] +
-            snappedDelta,
-        }))
+        updates.map(
+          (update) => ({
+            id:
+              update.id,
+            startMs:
+              update.startMs,
+          })
+        )
       );
     };
 
