@@ -49,6 +49,31 @@ const DAY = 24 * HOUR;
 const SNAP = 15 * MINUTE;
 const DEFAULT_TIMELINE_START = Date.parse('2026-10-26T06:00:00+08:00');
 const DEFAULT_TIMELINE_END = DEFAULT_TIMELINE_START + 7 * 24 * 60 * 60 * 1000;
+const TIMELINE_BUFFER_RATIO = 0.5;
+
+function getTimelineBufferedBounds(
+  startMs,
+  endMs
+) {
+  const spanMs =
+    Math.max(
+      HOUR,
+      endMs - startMs
+    );
+
+  const bufferMs =
+    spanMs *
+    TIMELINE_BUFFER_RATIO;
+
+  return {
+    bufferedStartMs:
+      startMs -
+      bufferMs,
+    bufferedEndMs:
+      endMs +
+      bufferMs,
+  };
+}
 
 const DEFAULT_COLUMNS = [
   {
@@ -2100,7 +2125,7 @@ function deriveScheduleRows(
 
 function useTimelineScroll({
   timelineRange,
-  setTimelineRange,
+  setTimelineBounds,
 }) {
   const headerRef = React.useRef(null);
   const itemsRef = React.useRef(null);
@@ -2111,11 +2136,16 @@ function useTimelineScroll({
   const pendingPrependPixelsRef =
     React.useRef(0);
 
+  const pendingAlignmentMsRef =
+    React.useRef(
+      timelineRange.startMs
+    );
+
   const [scrollLeft, setScrollLeft] =
     React.useState(0);
 
   const previousStartRef = React.useRef(
-    timelineRange.startMs
+    timelineRange.bufferedStartMs
   );
 
   const zoomLevel =
@@ -2150,13 +2180,55 @@ function useTimelineScroll({
     }
   };
 
+  const alignToTime = (
+    targetMs,
+    viewportOffsetPixels = 0
+  ) => {
+    const nextScrollLeft =
+      (
+        (
+          targetMs -
+          timelineRange.bufferedStartMs
+        ) /
+        HOUR
+      ) *
+      timelineRange.pixelsPerHour -
+      viewportOffsetPixels;
+
+    setAllScrollLeft(
+      nextScrollLeft
+    );
+
+    setScrollLeft(
+      nextScrollLeft
+    );
+  };
+
   React.useLayoutEffect(() => {
     const startChanged =
       previousStartRef.current !==
-      timelineRange.startMs;
+      timelineRange.bufferedStartMs;
 
     previousStartRef.current =
-      timelineRange.startMs;
+      timelineRange.bufferedStartMs;
+
+    const alignmentMs =
+      pendingAlignmentMsRef.current;
+
+    if (alignmentMs != null) {
+      pendingAlignmentMsRef.current =
+        null;
+
+      alignToTime(
+        alignmentMs
+      );
+
+      pendingPrependPixelsRef.current =
+        0;
+
+      extendingRef.current = false;
+      return;
+    }
 
     if (
       !startChanged ||
@@ -2169,7 +2241,8 @@ function useTimelineScroll({
     const addedPixels =
       pendingPrependPixelsRef.current;
 
-    pendingPrependPixelsRef.current = 0;
+    pendingPrependPixelsRef.current =
+      0;
 
     const currentScrollLeft =
       headerRef.current?.scrollLeft ??
@@ -2178,15 +2251,21 @@ function useTimelineScroll({
       0;
 
     const nextScrollLeft =
-      currentScrollLeft + addedPixels;
+      currentScrollLeft +
+      addedPixels;
 
-    setAllScrollLeft(nextScrollLeft);
-    setScrollLeft(nextScrollLeft);
+    setAllScrollLeft(
+      nextScrollLeft
+    );
+
+    setScrollLeft(
+      nextScrollLeft
+    );
 
     extendingRef.current = false;
   }, [
-    timelineRange.startMs,
-    timelineRange.endMs,
+    timelineRange.bufferedStartMs,
+    timelineRange.bufferedEndMs,
   ]);
 
   const extendIfRequired = (sourceRef) => {
@@ -2223,12 +2302,14 @@ function useTimelineScroll({
       pendingPrependPixelsRef.current =
         addedPixels;
 
-      setTimelineRange((current) => ({
-        ...current,
-        startMs:
-          current.startMs -
-          BUFFER_DURATION_MS,
-      }));
+      setTimelineBounds(
+        (current) => ({
+          ...current,
+          startMs:
+            current.startMs -
+            BUFFER_DURATION_MS,
+        })
+      );
 
       return;
     }
@@ -2236,12 +2317,14 @@ function useTimelineScroll({
     if (nearEnd) {
       extendingRef.current = true;
 
-      setTimelineRange((current) => ({
-        ...current,
-        endMs:
-          current.endMs +
-          BUFFER_DURATION_MS,
-      }));
+      setTimelineBounds(
+        (current) => ({
+          ...current,
+          endMs:
+            current.endMs +
+            BUFFER_DURATION_MS,
+        })
+      );
 
       requestAnimationFrame(() => {
         extendingRef.current = false;
@@ -2299,6 +2382,11 @@ function useTimelineScroll({
     resourcesRef,
     scrollLeft,
     panHorizontal,
+    requestStartAlignment:
+      (startMs) => {
+        pendingAlignmentMsRef.current =
+          startMs;
+      },
 
     onHeaderScroll: () =>
       sync(headerRef),
@@ -4848,7 +4936,7 @@ function TimelineControls({
     }
 
     const centreTime =
-      timelineRange.startMs +
+      timelineRange.bufferedStartMs +
       ((scroller.scrollLeft +
         scroller.clientWidth / 2) /
         timelineRange.pixelsPerHour) *
@@ -4869,7 +4957,7 @@ function TimelineControls({
 
       const centrePixel =
         ((centreTime -
-          timelineRange.startMs) /
+          timelineRange.bufferedStartMs) /
           HOUR) *
         pixelsPerHour;
 
@@ -4891,7 +4979,11 @@ function TimelineControls({
     if (activeSchedule == null) {
       return;
     }
-
+  
+    timeline.requestStartAlignment(
+      activeSchedule.startMs
+    );
+  
     setTimelineRange(
       (current) => ({
         ...current,
@@ -10838,23 +10930,68 @@ export default function PlanningGrid() {
     'planning' | 'resourceCapacity'
   >('planning');
   const [timelineRange, setTimelineRange] =
-    React.useState({
-      startMs: DEFAULT_TIMELINE_START,
-      endMs: DEFAULT_TIMELINE_END,
+    React.useState(() => ({
+      startMs:
+        DEFAULT_TIMELINE_START,
+      endMs:
+        DEFAULT_TIMELINE_END,
+      ...getTimelineBufferedBounds(
+        DEFAULT_TIMELINE_START,
+        DEFAULT_TIMELINE_END
+      ),
       pixelsPerHour:
         DEFAULT_TIMELINE_ZOOM.pixelsPerHour,
-    });
+    }));
+
+  const setTimelineBounds =
+    React.useCallback(
+      (update) => {
+        setTimelineRange(
+          (current) => {
+            const next =
+              typeof update ===
+                'function'
+                ? update(
+                  current
+                )
+                : update;
+
+            const startMs =
+              next.startMs ??
+              current.startMs;
+
+            const endMs =
+              next.endMs ??
+              current.endMs;
+
+            return {
+              ...current,
+              ...next,
+              startMs,
+              endMs,
+              ...getTimelineBufferedBounds(
+                startMs,
+                endMs
+              ),
+            };
+          }
+        );
+      },
+      []
+    );
+
   const timelineGeometry = React.useMemo(() => {
     const spanMs =
-      timelineRange.endMs -
-      timelineRange.startMs;
+      timelineRange.bufferedEndMs -
+      timelineRange.bufferedStartMs;
 
     const width =
       (spanMs / HOUR) *
       timelineRange.pixelsPerHour;
 
     const leftAt = (value) =>
-      `${((value - timelineRange.startMs) /
+      `${((value -
+        timelineRange.bufferedStartMs) /
         HOUR) *
       timelineRange.pixelsPerHour
       }px`;
@@ -10875,13 +11012,13 @@ export default function PlanningGrid() {
     const tickMs = tickHours * HOUR;
 
     const firstTickMs =
-      timelineRange.startMs;
+      timelineRange.bufferedStartMs;
 
     const ticks = [];
 
     for (
       let value = firstTickMs;
-      value <= timelineRange.endMs;
+      value <= timelineRange.bufferedEndMs;
       value += tickMs
     ) {
       ticks.push({
@@ -10891,8 +11028,8 @@ export default function PlanningGrid() {
     }
 
     return {
-      startMs: timelineRange.startMs,
-      endMs: timelineRange.endMs,
+      startMs: timelineRange.bufferedStartMs,
+      endMs: timelineRange.bufferedEndMs,
       spanMs,
       width,
       pixelsPerHour:
@@ -11236,7 +11373,7 @@ export default function PlanningGrid() {
 
   const timeline = useTimelineScroll({
     timelineRange,
-    setTimelineRange,
+    setTimelineBounds,
   });
 
   const toggleLocation = (
@@ -11583,7 +11720,7 @@ export default function PlanningGrid() {
     const targetPixel =
       (
         (targetMs -
-          timelineRange.startMs) /
+          timelineRange.bufferedStartMs) /
         HOUR
       ) *
       timelineRange.pixelsPerHour;
@@ -12524,7 +12661,7 @@ export default function PlanningGrid() {
 
               <TimelineControls
                 timelineRange={timelineRange}
-                setTimelineRange={setTimelineRange}
+                setTimelineRange={setTimelineBounds}
                 timeline={timeline}
                 activeSchedule={
                   activeSchedule
