@@ -4796,6 +4796,7 @@ function TimelineControls({
   timelineRange,
   setTimelineRange,
   timeline,
+  activeSchedule,
 }) {
   const setStart = (value) => {
     const startMs =
@@ -4886,6 +4887,22 @@ function TimelineControls({
     });
   };
 
+  const applyScheduleTimeline = () => {
+    if (activeSchedule == null) {
+      return;
+    }
+
+    setTimelineRange(
+      (current) => ({
+        ...current,
+        startMs:
+          activeSchedule.startMs,
+        endMs:
+          activeSchedule.endMs,
+      })
+    );
+  };
+
   const zoomLevel =
     getZoomLevel(
       timelineRange.pixelsPerHour
@@ -4952,6 +4969,24 @@ function TimelineControls({
           )}
         </select>
       </label>
+
+      <button
+        type="button"
+        className="h-8 border border-slate-300 bg-white px-3 text-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+        disabled={
+          activeSchedule == null
+        }
+        title={
+          activeSchedule == null
+            ? 'Select an active schedule first.'
+            : `Apply timeline from ${activeSchedule.title}`
+        }
+        onClick={
+          applyScheduleTimeline
+        }
+      >
+        Apply schedule timeline
+      </button>
     </div>
   );
 }
@@ -10918,6 +10953,13 @@ export default function PlanningGrid() {
     setActiveScheduleId,
   ] = React.useState(null);
 
+  const activeSchedule =
+    activeScheduleId == null
+      ? null
+      : schedules[
+      activeScheduleId
+      ] ?? null;
+
   const [
     creatingSchedule,
     setCreatingSchedule,
@@ -12484,6 +12526,9 @@ export default function PlanningGrid() {
                 timelineRange={timelineRange}
                 setTimelineRange={setTimelineRange}
                 timeline={timeline}
+                activeSchedule={
+                  activeSchedule
+                }
               />
 
               <div className="relative flex min-h-0 flex-1 flex-col">
